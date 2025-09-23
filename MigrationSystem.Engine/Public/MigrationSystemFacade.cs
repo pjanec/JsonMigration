@@ -24,7 +24,7 @@ internal class MigrationSystemFacade : IMigrationSystem
         // Create internal components
         var planner = new MigrationPlanner(registry);
         var merger = new ThreeWayMerger(registry);
-        var runner = new MigrationRunner(merger, registry);
+        var runner = new MigrationRunner(registry, snapshotManager, merger);
         
         this.OperationalData = new OperationalDataApi(planner, runner);
         this.Data = new DataApi(registry, schemaRegistry, this.OperationalData);

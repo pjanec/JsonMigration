@@ -24,7 +24,14 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<SnapshotManager>();
         services.AddSingleton<MigrationPlanner>();
         services.AddSingleton<ThreeWayMerger>();
-        services.AddSingleton<MigrationRunner>();
+        
+        // Register MigrationRunner with its dependencies
+        services.AddSingleton<MigrationRunner>(sp => 
+            new MigrationRunner(
+                sp.GetRequiredService<MigrationRegistry>(),
+                sp.GetRequiredService<SnapshotManager>(),
+                sp.GetRequiredService<ThreeWayMerger>()
+            ));
 
         // Register the main facade, which will be built by the builder.
         // The builder itself will resolve the dependencies from the container.

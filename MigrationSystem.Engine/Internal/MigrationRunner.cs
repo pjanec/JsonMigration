@@ -14,19 +14,24 @@ internal class MigrationRunner
     private readonly MigrationRegistry _registry; // Needed for migrations
     private readonly SnapshotManager _snapshotManager;
 
-    public MigrationRunner(MigrationPlanner planner, ThreeWayMerger merger, SnapshotManager snapshotManager)
+    /// <summary>
+    /// The single, canonical constructor for the MigrationRunner.
+    /// It explicitly declares all required dependencies, making it suitable
+    /// for use with Dependency Injection frameworks.
+    /// </summary>
+    /// <param name="migrationRegistry">The registry containing all available migrations.</param>
+    /// <param name="snapshotManager">The manager responsible for snapshot creation and logic.</param>
+    /// <param name="merger">The engine for performing three-way merges.</param>
+    public MigrationRunner(
+        MigrationRegistry migrationRegistry, 
+        SnapshotManager snapshotManager, 
+        ThreeWayMerger merger)
     {
-        _merger = merger;
-        _registry = null!; // Will be set by dependency injection
+        _registry = migrationRegistry;
         _snapshotManager = snapshotManager;
+        _merger = merger;
     }
 
-    public MigrationRunner(ThreeWayMerger merger, MigrationRegistry registry)
-    {
-        _merger = merger;
-        _registry = registry;
-        _snapshotManager = null!;
-    }
 
     // Legacy method for backwards compatibility
     public async Task ExecutePlanAsync(/*...params...*/)

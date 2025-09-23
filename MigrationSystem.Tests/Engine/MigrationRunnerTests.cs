@@ -16,11 +16,10 @@ public class MigrationRunnerTests
         var registry = new MigrationRegistry();
         registry.RegisterMigrationsFromAssembly(Assembly.GetExecutingAssembly());
         
-        var planner = new MigrationPlanner(registry);
         var merger = new ThreeWayMerger(registry);
         var snapshotManager = new SnapshotManager();
         
-        return new MigrationRunner(planner, merger, snapshotManager);
+        return new MigrationRunner(registry, snapshotManager, merger);
     }
 
     [Fact]

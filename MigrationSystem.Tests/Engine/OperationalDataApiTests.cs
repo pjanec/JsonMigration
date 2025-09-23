@@ -19,7 +19,7 @@ public class OperationalDataApiTests
         var planner = new MigrationPlanner(registry);
         var merger = new ThreeWayMerger(registry);
         var snapshotManager = new SnapshotManager();
-        var runner = new MigrationRunner(planner, merger, snapshotManager);
+        var runner = new MigrationRunner(registry, snapshotManager, merger);
         
         return new OperationalDataApi(planner, runner);
     }

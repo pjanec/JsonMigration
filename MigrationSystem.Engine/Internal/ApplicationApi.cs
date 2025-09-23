@@ -36,13 +36,20 @@ internal class ApplicationApi : IApplicationApi
         var jobject = JObject.Parse(jsonContent);
         
         var metaToken = jobject["_meta"];
+        
+        MetaBlock meta;
         if (metaToken == null)
         {
-            // Handle files without metadata
-            throw new InvalidOperationException("File does not contain a _meta block and cannot be migrated.");
+            // If no _meta block is found, treat the file as version 1.0.
+            // The document type is inferred from the generic type T.
+            meta = new MetaBlock(typeof(T).Name, "1.0");
+        }
+        else
+        {
+            // If a _meta block exists, parse it as usual.
+            meta = metaToken.ToObject<MetaBlock>();
         }
 
-        var meta = metaToken.ToObject<MetaBlock>();
         var fromType = _registry.GetTypeForVersion(meta.DocType, meta.SchemaVersion);
 
         if (validate)
