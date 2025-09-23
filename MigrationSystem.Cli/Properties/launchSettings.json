@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "MigrationSystem.Cli": {
+      "commandName": "Project",
+      "commandLineArgs": "plan-upgrade"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "DocType": "PkgConf",
+    "SchemaVersion": "1.0"
+  },
+  "timeout": 45,
+  "plugins": [
+    "logging"
+  ]
+}
