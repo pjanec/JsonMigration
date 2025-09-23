@@ -38,12 +38,30 @@ internal class ApplicationApi : IApplicationApi
         
         var metaToken = jobject["_meta"];
         
+        MetaBlock meta;
         if (metaToken == null)
         {
-            throw new InvalidOperationException($"File '{path}' does not contain a _meta block. All managed documents must have version metadata.");
+            // Fallback for legacy files without _meta blocks:
+            // Try to infer DocType from the target type T's SchemaVersion attribute
+            var schemaAttr = typeof(T).GetCustomAttribute<SchemaVersionAttribute>();
+            if (schemaAttr != null)
+            {
+                // Use the DocType from the target type and assume version 1.0
+                meta = new MetaBlock(schemaAttr.DocType, "1.0");
+            }
+            else
+            {
+                // Last resort: use the type name as DocType and version 1.0
+                // This maintains backward compatibility with existing code
+                meta = new MetaBlock(typeof(T).Name, "1.0");
+            }
+        }
+        else
+        {
+            // If a _meta block exists, parse it as usual.
+            meta = metaToken.ToObject<MetaBlock>()!;
         }
 
-        var meta = metaToken.ToObject<MetaBlock>()!;
         var fromType = _registry.GetTypeForVersion(meta.DocType, meta.SchemaVersion);
 
         if (validate)
