@@ -1,0 +1,11 @@
+{
+  "_meta": {
+    "DocType": "PkgConf",
+    "SchemaVersion": "2.0"
+  },
+  "execution_timeout": 500,
+  "plugins": {
+    "auth": { "enabled": true }
+  },
+  "reporting": { "format": "json" }
+}

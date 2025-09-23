@@ -1,8 +1,9 @@
 using MigrationSystem.Core.Public;
 using MigrationSystem.Engine.Internal;
+using MigrationSystem.Engine.Discovery;
 using Microsoft.Extensions.DependencyInjection;
 using System;
-using System.Collections.Generic; // Add this using directive
+using System.Collections.Generic;
 using System.Reflection;
 
 namespace MigrationSystem.Engine.Public;
@@ -52,7 +53,10 @@ public class MigrationSystemBuilder
         // Create the QuarantineManager with the configured path
         var quarantineManager = new QuarantineManager(_quarantineDir);
         
+        // Create the FileDiscoverer with the configured default manifest path
+        var fileDiscoverer = new FileDiscoverer(_manifestPath);
+        
         // Compose the final facade implementation with its dependencies
-        return new MigrationSystemFacade(registry, snapshotManager, schemaRegistry, quarantineManager);
+        return new MigrationSystemFacade(registry, snapshotManager, schemaRegistry, quarantineManager, fileDiscoverer);
     }
 }

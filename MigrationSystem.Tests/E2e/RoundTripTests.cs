@@ -2,6 +2,7 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using MigrationSystem.Core.Public;
 using MigrationSystem.Core.Public.DataContracts;
+using MigrationSystem.Core.Public.Exceptions;
 using MigrationSystem.Engine.Public;
 using Newtonsoft.Json.Linq;
 using System;
@@ -29,6 +30,7 @@ public class RoundTripTests : IDisposable
         {
             // Tell the system to scan our current test assembly for the PkgConf migrations
             options.WithMigrationsFromAssembly(typeof(RoundTripTests).Assembly);
+            options.WithQuarantineDirectory(Path.Combine(_testDirectory, "quarantine"));
         });
         var serviceProvider = services.BuildServiceProvider();
         _migrationSystem = serviceProvider.GetRequiredService<IMigrationSystem>();
@@ -132,140 +134,138 @@ public class RoundTripTests : IDisposable
         theirsV2Edit.Remove("_meta");
         mineV1Edit.Remove("_meta");
 
-        // Since DataApi is not implemented yet, we'll test with OperationalData for now
-        // This demonstrates the core logic working on in-memory objects
-        
+        var dataApi = _migrationSystem.Data;
+
         // --- STEP 1 & 2: First Upgrade and V2 Edit ---
         // We simulate this by having `theirsV2Edit` as the state before rollback.
         // The pre-upgrade snapshot would be the `baseV1` content.
         var preUpgradeSnapshot = new Snapshot(baseV1, baseMeta);
 
-        // --- STEP 3: Simulate Downgrade (V2 -> V1) ---
-        // For now we'll test the three-way merge logic directly
-        var doc = new VersionedDocument("test", mineV1Edit, mineMeta);
-        var bundle = new DocumentBundle(doc, new[] { preUpgradeSnapshot });
-        var bundles = new[] { bundle };
+        // --- STEP 3: Downgrade (V2 -> V1) ---
+        var downgradeResult = await dataApi.ExecuteDowngradeAsync(theirsV2Edit, theirsMeta, "1.0");
 
-        // Test upgrade with available snapshots (should trigger three-way merge logic)
-        var plan = await _migrationSystem.OperationalData.PlanUpgradeAsync(bundles);
-        var result = await _migrationSystem.OperationalData.ExecutePlanAsync(plan, bundles);
+        // Assert that a pre-rollback snapshot was correctly generated
+        downgradeResult.SnapshotsToPersist.Should().HaveCount(1);
+        var preRollbackSnapshot = downgradeResult.SnapshotsToPersist.First();
+        preRollbackSnapshot.Metadata.SchemaVersion.Should().Be("2.0");
+        preRollbackSnapshot.Data["execution_timeout"]?.Value<int>().Should().Be(100);
+
+        // --- STEP 4 & 5: Simulate V1 Edit and Re-Upgrade with Merge ---
+        var availableSnapshots = new[] { preUpgradeSnapshot, preRollbackSnapshot };
+        var reUpgradeResult = await dataApi.ExecuteUpgradeAsync(mineV1Edit, mineMeta, availableSnapshots);
 
         // --- ASSERT FINAL STATE ---
-        result.Summary.Succeeded.Should().Be(1);
-        result.SuccessfulDocuments.First().Result.NewMetadata.SchemaVersion.Should().Be("2.0");
+        reUpgradeResult.NewMetadata.SchemaVersion.Should().Be("2.0");
+        reUpgradeResult.SnapshotsToDelete.Should().HaveCount(2); // Verify old snapshots were consumed
+
+        var finalData = reUpgradeResult.Data;
+        finalData["execution_timeout"]?.Value<int>().Should().Be(100); // Theirs > Mine
+        finalData["plugins"]?["cache"]?.Should().NotBeNull();   // Added in Theirs
+        finalData["plugins"]?["auth"]?.Should().BeNull();        // Removed in Mine
+        finalData["plugins"]?["logging"]?["enabled"]?.Value<bool>().Should().BeFalse(); // Changed in Theirs
     }
 
     [Fact]
-    public async Task Scenario4_SchemaValidationFailure_ThrowsException()
+    public async Task Scenario4_CorruptSnapshot_CausesQuarantine()
     {
-        // ARRANGE: Create a test file with potentially invalid data
+        // ARRANGE: Perform a standard upgrade to create a valid V1 snapshot
+        var sourceFile = "TestData/PkgConf/v1_clean.json";
+        var testFile = Path.Combine(_testDirectory, "config.json");
+        File.Copy(sourceFile, testFile);
+        var manifest = CreateManifestForSingleFile(testFile);
+
+        var upgradePlan = await _migrationSystem.Operations.PlanUpgradeFromManifestAsync(manifest);
+        await _migrationSystem.Operations.ExecutePlanAgainstFileSystemAsync(upgradePlan);
+
+        // ACT: Corrupt the snapshot file by altering its content
+        var snapshotFile = Directory.EnumerateFiles(_testDirectory, "*.v1.0.*.snapshot.json").Single();
+        await File.WriteAllTextAsync(snapshotFile, "{ \"corrupt\": true }");
+
+        // ACT: Attempt a rollback, which will force the engine to read the corrupt snapshot
+        var rollbackPlan = await _migrationSystem.Operations.PlanRollbackFromManifestAsync("1.0", manifest);
+        var result = await _migrationSystem.Operations.ExecutePlanAgainstFileSystemAsync(rollbackPlan);
+
+        // ASSERT
+        result.Summary.Succeeded.Should().Be(0);
+        result.Summary.Failed.Should().Be(1);
+        result.FailedDocuments.First().QuarantineRecord.Reason.Should().Be("SnapshotIntegrityFailure");
+    }
+
+    [Fact]
+    public async Task Scenario4_SchemaValidationFailure_CausesQuarantine()
+    {
+        // ARRANGE: Create a test file with data that violates our DTO validation attributes
         var testFile = Path.Combine(_testDirectory, "invalid_config.json");
-        var invalidContent = @"{
-      ""_meta"": { ""DocType"": ""PkgConf"", ""SchemaVersion"": ""2.0"" },
-      ""execution_timeout"": 500   
-    }"; // This may violate validation rules if they exist
-        await File.WriteAllTextAsync(testFile, invalidContent);
-
-        // ACT & ASSERT: Since validation is not fully implemented, test basic error handling
+        File.Copy("TestData/PkgConf/v2_invalid_range.json", testFile);
+        
         var appApi = _migrationSystem.Application;
+
+        // ACT & ASSERT: The operation should throw and the file should be moved.
+        await Assert.ThrowsAsync<MigrationQuarantineException>(() =>
+            appApi.LoadLatestAsync<TestMigrations.PkgConf.PkgConfV2_0>(testFile, LoadBehavior.InMemoryOnly, validate: true)
+        );
         
-        // Test that the system can handle the file gracefully
-        try
+        File.Exists(testFile).Should().BeFalse(); // Verify original file was moved
+        // A more robust test would check the quarantine directory content.
+    }
+
+    [Fact]
+    public async Task Scenario5_RetryFailed_Succeeds()
+    {
+        // ARRANGE: Create a file and lock it to force a failure
+        var testFile = Path.Combine(_testDirectory, "locked_config.json");
+        File.Copy("TestData/PkgConf/v1_clean.json", testFile);
+        var manifest = CreateManifestForSingleFile(testFile);
+        var initialResult = new MigrationResult(null!, null!, null!);
+
+        // Lock the file by opening a stream to it
+        using (var lockStream = new FileStream(testFile, FileMode.Open, FileAccess.Read, FileShare.None))
         {
-            var result = await appApi.LoadLatestAsync<TestMigrations.PkgConf.PkgConfV2_0>(testFile, LoadBehavior.InMemoryOnly, validate: true);
-            // If no validation rules are enforced yet, this should succeed
-            result.Should().NotBeNull();
+            var plan = await _migrationSystem.Operations.PlanUpgradeFromManifestAsync(manifest);
+            initialResult = await _migrationSystem.Operations.ExecutePlanAgainstFileSystemAsync(plan);
+
+            // Assert initial run failed
+            initialResult.Summary.Failed.Should().Be(1);
+            initialResult.FailedDocuments.First().QuarantineRecord.Reason.Should().Be("ExecutionFailure");
         }
-        catch (Exception ex)
-        {
-            // If validation is implemented, it should contain validation error info
-            ex.Message.Should().Contain("validation");
-        }
-    }
-
-    [Fact]
-    public async Task Scenario4_CorruptSnapshot_CausesGracefulHandling()
-    {
-        // ARRANGE: Test with invalid snapshot data to ensure graceful handling
-        var sourceFile = "TestData/PkgConf/v1_clean.json";
-        var testFile = Path.Combine(_testDirectory, "config.json");
-        File.Copy(sourceFile, testFile);
-
-        // Create a document bundle with an invalid snapshot
-        var fileContent = await File.ReadAllTextAsync(testFile);
-        var jobject = JObject.Parse(fileContent);
-        var meta = jobject["_meta"]!.ToObject<MetaBlock>()!;
-        jobject.Remove("_meta");
-
-        // Create a snapshot with corrupt data but valid version format
-        var corruptSnapshot = new Snapshot(new JObject { ["corrupt"] = true }, new MetaBlock("PkgConf", "1.5"));
-        var doc = new VersionedDocument(testFile, jobject, meta);
-        var bundle = new DocumentBundle(doc, new[] { corruptSnapshot });
-        var bundles = new[] { bundle };
-
-        // ACT: Try to plan with corrupt snapshot
-        var plan = await _migrationSystem.OperationalData.PlanUpgradeAsync(bundles);
         
-        // ASSERT: System should handle this gracefully
-        plan.Should().NotBeNull();
-        // The corrupt snapshot should not prevent basic planning
-        plan.Actions.Should().HaveCount(1);
-        // With a snapshot from version 1.5, this should be detected as rollback history
-        plan.Actions[0].ActionType.Should().Be(ActionType.THREE_WAY_MERGE);
+        // ACT: The 'using' block has disposed, unlocking the file.
+        // We can now retry the failed operation.
+        var retryResult = await _migrationSystem.Operations.RetryFailedFileSystemAsync(initialResult);
+
+        // ASSERT
+        retryResult.Summary.Succeeded.Should().Be(1);
+        retryResult.Summary.Failed.Should().Be(0);
+        var finalContent = JObject.Parse(await File.ReadAllTextAsync(testFile));
+        finalContent["_meta"]?["SchemaVersion"]?.Value<string>().Should().Be("2.0");
     }
 
     [Fact]
-    public async Task Scenario5_RetryFailed_Concept_Succeeds()
+    public async Task Scenario6_GarbageCollect_CleansUpObsoleteSnapshots()
     {
-        // ARRANGE: Test the retry concept with operational data API
-        var sourceFile = "TestData/PkgConf/v1_clean.json";
-        var fileContent = await File.ReadAllTextAsync(sourceFile);
-        var jobject = JObject.Parse(fileContent);
-        var meta = jobject["_meta"]!.ToObject<MetaBlock>()!;
-        jobject.Remove("_meta");
-
-        var doc = new VersionedDocument("test", jobject, meta);
-        var bundle = new DocumentBundle(doc, Enumerable.Empty<Snapshot>());
-        var bundles = new[] { bundle };
-
-        // ACT: Plan and execute - this should succeed
-        var plan = await _migrationSystem.OperationalData.PlanUpgradeAsync(bundles);
-        var result = await _migrationSystem.OperationalData.ExecutePlanAsync(plan, bundles);
-
-        // ASSERT: Initial run should succeed
-        result.Summary.Succeeded.Should().Be(1);
-        result.Summary.Failed.Should().Be(0);
-
-        // This demonstrates that the operational data API works correctly
-        // Full retry functionality would be implemented in the file-based operations
-    }
-
-    [Fact]
-    public async Task Scenario6_GarbageCollect_Concept_Succeeds()
-    {
-        // ARRANGE: Test garbage collection concept
-        var sourceFile = "TestData/PkgConf/v1_clean.json";
+        // ARRANGE: Create a mix of obsolete and critical snapshots via a round trip
         var testFile = Path.Combine(_testDirectory, "config.json");
-        File.Copy(sourceFile, testFile);
+        File.Copy("TestData/PkgConf/merge_base_v1.json", testFile);
+        var manifest = CreateManifestForSingleFile(testFile);
 
-        // Create some test snapshot files
-        var snapshot1 = Path.Combine(_testDirectory, "config.json.v1.0.abc123.snapshot.json");
-        var snapshot2 = Path.Combine(_testDirectory, "config.json.v2.0.def456.snapshot.json");
-        
-        await File.WriteAllTextAsync(snapshot1, "{ \"test\": \"snapshot1\" }");
-        await File.WriteAllTextAsync(snapshot2, "{ \"test\": \"snapshot2\" }");
+        // V1 -> V2 (creates a .v1.0.snapshot)
+        var upgradePlan = await _migrationSystem.Operations.PlanUpgradeFromManifestAsync(manifest);
+        await _migrationSystem.Operations.ExecutePlanAgainstFileSystemAsync(upgradePlan);
 
-        // ASSERT: Test files are created
+        // V2 -> V1 (creates a .v2.0.snapshot)
+        var rollbackPlan = await _migrationSystem.Operations.PlanRollbackFromManifestAsync("1.0", manifest);
+        await _migrationSystem.Operations.ExecutePlanAgainstFileSystemAsync(rollbackPlan);
+
+        // At this point, we have an obsolete v1.0 snapshot and a critical v2.0 snapshot
         Directory.EnumerateFiles(_testDirectory, "*.snapshot.json").Count().Should().Be(2);
 
-        // This demonstrates the concept - actual garbage collection would implement:
-        // 1. Analysis of which snapshots are still needed
-        // 2. Safe deletion of obsolete snapshots
-        // 3. Preservation of critical snapshots for rollback scenarios
-
-        // For now, verify the test setup works
-        File.Exists(snapshot1).Should().BeTrue();
-        File.Exists(snapshot2).Should().BeTrue();
+        // ACT: Run the Garbage Collector
+        await _migrationSystem.Operations.GarbageCollectSnapshotsAsync(manifest);
+        
+        // ASSERT
+        var remainingSnapshots = Directory.EnumerateFiles(_testDirectory, "*.snapshot.json").ToList();
+        remainingSnapshots.Should().HaveCount(1);
+        remainingSnapshots.First().Should().Contain(".v2.0."); // Assert the critical snapshot was preserved
     }
 
     private string CreateManifestForSingleFile(string filePath)

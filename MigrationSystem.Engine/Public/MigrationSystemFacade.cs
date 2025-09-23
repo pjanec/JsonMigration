@@ -10,26 +10,25 @@ namespace MigrationSystem.Engine.Public;
 internal class MigrationSystemFacade : IMigrationSystem
 {
     public IApplicationApi Application { get; }
-    public IDataApi Data { get; } // To be implemented
+    public IDataApi Data { get; }
     public IOperationalApi Operations { get; }
     public IOperationalDataApi OperationalData { get; }
     public IDiscoveryService Discovery { get; }
 
     // The constructor will receive all the configured internal services from the DI container.
-    public MigrationSystemFacade(MigrationRegistry registry, SnapshotManager snapshotManager, SchemaRegistry schemaRegistry, QuarantineManager quarantineManager)
+    public MigrationSystemFacade(MigrationRegistry registry, SnapshotManager snapshotManager, SchemaRegistry schemaRegistry, QuarantineManager quarantineManager, IDiscoveryService discoveryService)
     {
+        // Store the discovery service instance
+        this.Discovery = discoveryService;
+        
         // Create internal components
         var planner = new MigrationPlanner(registry);
         var merger = new ThreeWayMerger(registry);
         var runner = new MigrationRunner(merger, registry);
-
-        // Compose the concrete implementations of our public facades
-        this.Application = new ApplicationApi(registry, schemaRegistry, snapshotManager, quarantineManager);
-        this.OperationalData = new OperationalDataApi(planner, runner);
-        this.Discovery = new FileDiscoverer();
-        this.Operations = new OperationalApi(this.Discovery, this.OperationalData, snapshotManager, quarantineManager);
         
-        // ... instantiate other facades here
-        this.Data = null!; // Placeholder
+        this.OperationalData = new OperationalDataApi(planner, runner);
+        this.Data = new DataApi(registry, schemaRegistry, this.OperationalData);
+        this.Application = new ApplicationApi(registry, schemaRegistry, snapshotManager, quarantineManager);
+        this.Operations = new OperationalApi(discoveryService, this.OperationalData, snapshotManager, quarantineManager);
     }
 }

@@ -96,6 +96,21 @@ internal class MigrationRunner
                                 };
                             }
                             break;
+                        case ActionType.STANDARD_DOWNGRADE:
+                            if (_registry != null)
+                            {
+                                result = await HandleStandardDowngrade(bundle, plan.Header.TargetVersion);
+                            }
+                            else
+                            {
+                                // Fallback for tests without registry
+                                result = new DataMigrationResult
+                                {
+                                    Data = bundle.Document.Data,
+                                    NewMetadata = new MetaBlock(bundle.Document.Metadata.DocType, plan.Header.TargetVersion)
+                                };
+                            }
+                            break;
                         case ActionType.THREE_WAY_MERGE:
                             if (_registry != null && bundle.AvailableSnapshots.Any())
                             {
@@ -182,6 +197,35 @@ internal class MigrationRunner
         {
             Data = finalJObject,
             NewMetadata = new MetaBlock(bundle.Document.Metadata.DocType, targetVersion),
+            SnapshotsToPersist = new List<Snapshot> { new(bundle.Document.Data, bundle.Document.Metadata) }
+        };
+    }
+
+    private async Task<DataMigrationResult> HandleStandardDowngrade(DocumentBundle bundle, string targetVersion)
+    {
+        var fromType = _registry.GetTypeForVersion(bundle.Document.Metadata.DocType, bundle.Document.Metadata.SchemaVersion);
+        var toType = _registry.GetTypeForVersion(bundle.Document.Metadata.DocType, targetVersion);
+
+        // For downgrade, we find the path forward and then reverse it.
+        var forwardPath = _registry.FindPath(toType, fromType);
+        var migrationPath = forwardPath.AsEnumerable().Reverse().ToList();
+
+        object currentDto = bundle.Document.Data.ToObject(fromType);
+
+        foreach (var migrationStep in migrationPath)
+        {
+            // Use ReverseAsync for downgrades
+            var method = migrationStep.GetType().GetMethod("ReverseAsync");
+            currentDto = await (dynamic)method.Invoke(migrationStep, new[] { currentDto });
+        }
+
+        var finalJObject = JObject.FromObject(currentDto);
+
+        return new DataMigrationResult
+        {
+            Data = finalJObject,
+            NewMetadata = new MetaBlock(bundle.Document.Metadata.DocType, targetVersion),
+            // Critical: The pre-rollback snapshot is the *current* state of the V2 document.
             SnapshotsToPersist = new List<Snapshot> { new(bundle.Document.Data, bundle.Document.Metadata) }
         };
     }

@@ -40,7 +40,7 @@ public class Program
             switch (command.ToLower())
             {
                 case "plan-upgrade":
-                    await HandlePlanUpgrade(migrationSystem.Operations);
+                    await HandlePlanUpgrade(args, migrationSystem.Operations);
                     break;
                 
                 case "migrate":
@@ -66,11 +66,15 @@ public class Program
         return 0;
     }
 
-    private static async Task HandlePlanUpgrade(IOperationalApi opsApi)
+    private static async Task HandlePlanUpgrade(string[] args, IOperationalApi opsApi)
     {
         Console.WriteLine("Planning migration upgrade...");
         
-        var plan = await opsApi.PlanUpgradeFromManifestAsync();
+        // Find the optional --manifest argument
+        var manifestPathArg = args.FirstOrDefault(a => a.StartsWith("--manifest="))?.Split('=')[1];
+        
+        // Pass the argument to the API call
+        var plan = await opsApi.PlanUpgradeFromManifestAsync(manifestPathArg);
         var planFileName = $"plan-{DateTime.UtcNow:yyyyMMddHHmmss}.json";
         var planJson = JsonSerializer.Serialize(plan, new JsonSerializerOptions { WriteIndented = true });
         await File.WriteAllTextAsync(planFileName, planJson);
@@ -88,6 +92,15 @@ public class Program
         }
         
         Console.WriteLine($"Plan saved to: {planFileName}");
+        
+        if (manifestPathArg != null)
+        {
+            Console.WriteLine($"Used manifest: {manifestPathArg}");
+        }
+        else
+        {
+            Console.WriteLine("Used default manifest path");
+        }
     }
 
     private static async Task HandleMigrate(string[] args, IOperationalApi opsApi)
@@ -146,12 +159,13 @@ public class Program
         Console.WriteLine("Usage: MigrationSystem.Cli <command> [options]");
         Console.WriteLine();
         Console.WriteLine("Commands:");
-        Console.WriteLine("  plan-upgrade                Generate a dry-run migration plan");
-        Console.WriteLine("  migrate --plan=<file>       Execute a specific migration plan");
-        Console.WriteLine("  help                        Show this help message");
+        Console.WriteLine("  plan-upgrade [--manifest=<path>]    Generate a dry-run migration plan");
+        Console.WriteLine("  migrate --plan=<file>               Execute a specific migration plan");
+        Console.WriteLine("  help                                Show this help message");
         Console.WriteLine();
         Console.WriteLine("Examples:");
         Console.WriteLine("  MigrationSystem.Cli plan-upgrade");
+        Console.WriteLine("  MigrationSystem.Cli plan-upgrade --manifest=./custom-manifest.json");
         Console.WriteLine("  MigrationSystem.Cli migrate --plan=plan-20250922192800.json");
     }
 }

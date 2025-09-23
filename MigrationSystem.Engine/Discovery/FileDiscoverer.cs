@@ -11,20 +11,30 @@ namespace MigrationSystem.Engine.Discovery;
 // This internal class implements the public discovery facade.
 internal class FileDiscoverer : IDiscoveryService
 {
+    private readonly string _defaultManifestPath;
     // A real implementation would discover these via reflection/DI.
     private readonly Dictionary<string, IDiscoveryRule> _rules = new();
+
+    public FileDiscoverer(string defaultManifestPath)
+    {
+        _defaultManifestPath = defaultManifestPath;
+    }
 
     // A real implementation would have more complex logic to parse the manifest
     // and execute the IDiscoveryRule instances. This is a simplified placeholder.
     public async Task<MigrationManifest> LoadManifestAsync(string manifestPath)
     {
-        if (!File.Exists(manifestPath))
+        // This is the core logic: use the provided path, but fall back to the default.
+        var pathToLoad = manifestPath ?? _defaultManifestPath;
+
+        if (string.IsNullOrEmpty(pathToLoad) || !File.Exists(pathToLoad))
         {
-            // Return empty manifest if file doesn't exist
+            // If no manifest is found, return an empty one. The system can
+            // still operate on an application's internal-only rules.
             return new MigrationManifest(new List<string>(), new List<DiscoveryRuleDefinition>());
         }
-        
-        var json = await File.ReadAllTextAsync(manifestPath);
+
+        var json = await File.ReadAllTextAsync(pathToLoad);
         return JsonConvert.DeserializeObject<MigrationManifest>(json) ?? 
                new MigrationManifest(new List<string>(), new List<DiscoveryRuleDefinition>());
     }
