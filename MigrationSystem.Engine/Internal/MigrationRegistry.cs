@@ -92,12 +92,12 @@ internal class MigrationRegistry
     {
         if (!_docTypeVersionMap.TryGetValue(docType, out var versionMap))
         {
-            throw new ArgumentException($"DocType '{docType}' has no registered schemas.");
+            throw new InvalidOperationException($"DocType '{docType}' has no registered schemas.");
         }
 
         if (!versionMap.TryGetValue(version, out var type))
         {
-            throw new ArgumentException($"Version '{version}' for DocType '{docType}' is not a registered schema.");
+            throw new InvalidOperationException($"Version '{version}' for DocType '{docType}' is not a registered schema.");
         }
 
         return type;
@@ -170,4 +170,38 @@ internal class MigrationRegistry
         }
         throw new InvalidOperationException($"No migration path found from {typeof(TFrom).Name} to {typeof(TTo).Name}.");
     }
+
+    /// <summary>
+    /// Finds the highest registered version for a given document type.
+    /// </summary>
+    /// <param name="docType">The document type to query.</param>
+    /// <returns>The latest version string (e.g., "2.0") or null if the docType is not found.</returns>
+    public string? FindLatestVersion(string docType)
+    {
+        // 1. Look up the docType in our main dictionary.
+        if (!_docTypeVersionMap.TryGetValue(docType, out var versionMap))
+        {
+            // If the docType isn't registered, we can't find a version.
+            return null;
+        }
+
+        // 2. Get all the registered version strings (e.g., "1.0", "2.0").
+        var versions = versionMap.Keys;
+        
+        // It's possible a docType was registered but has no versions yet.
+        if (!versions.Any())
+        {
+            return null;
+        }
+
+        // 3. Parse the strings into System.Version objects, sort them descending,
+        //    and return the string representation of the highest version.
+        //    This correctly handles "10.0" being higher than "2.0".
+        return versions
+            .Select(v => new Version(v))
+            .OrderByDescending(v => v)
+            .FirstOrDefault()?
+            .ToString();
+    }
+
 }

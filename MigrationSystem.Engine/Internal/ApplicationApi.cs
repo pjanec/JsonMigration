@@ -6,6 +6,7 @@ using Newtonsoft.Json.Linq;
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
@@ -37,19 +38,12 @@ internal class ApplicationApi : IApplicationApi
         
         var metaToken = jobject["_meta"];
         
-        MetaBlock meta;
         if (metaToken == null)
         {
-            // If no _meta block is found, treat the file as version 1.0.
-            // The document type is inferred from the generic type T.
-            meta = new MetaBlock(typeof(T).Name, "1.0");
-        }
-        else
-        {
-            // If a _meta block exists, parse it as usual.
-            meta = metaToken.ToObject<MetaBlock>();
+            throw new InvalidOperationException($"File '{path}' does not contain a _meta block. All managed documents must have version metadata.");
         }
 
+        var meta = metaToken.ToObject<MetaBlock>()!;
         var fromType = _registry.GetTypeForVersion(meta.DocType, meta.SchemaVersion);
 
         if (validate)
@@ -75,7 +69,7 @@ internal class ApplicationApi : IApplicationApi
         var migrationPath = _registry.FindPath(fromType, typeof(T));
         var wasMigrated = migrationPath.Any();
         
-        object currentDto = jobject.ToObject(fromType);
+        object currentDto = jobject.ToObject(fromType)!;
 
         // Execute the migration chain
         foreach (var migrationStep in migrationPath)
@@ -84,7 +78,7 @@ internal class ApplicationApi : IApplicationApi
             var toDtoType = migrationStep.GetType().GetInterfaces().First().GetGenericArguments()[1];
             
             var method = migrationStep.GetType().GetMethod("ApplyAsync");
-            currentDto = await (dynamic)method.Invoke(migrationStep, new[] { currentDto });
+            currentDto = await (dynamic)method!.Invoke(migrationStep, new[] { currentDto });
         }
         
         if (wasMigrated && behavior == LoadBehavior.MigrateOnDisk)
@@ -99,10 +93,31 @@ internal class ApplicationApi : IApplicationApi
 
     public async Task SaveLatestAsync<T>(string path, T document) where T : class
     {
-        // This is a simplified Save. A full implementation would dynamically
-        // determine the latest version and attach the correct MetaBlock.
-        var json = JsonConvert.SerializeObject(document, Formatting.Indented);
-        
+        // 1. Get the SchemaVersion attribute from the DTO type.
+        var schemaAttr = typeof(T).GetCustomAttribute<SchemaVersionAttribute>();
+        if (schemaAttr == null)
+        {
+            throw new InvalidOperationException($"Type '{typeof(T).FullName}' is not a versioned DTO. Did you forget to add the [SchemaVersion] attribute?");
+        }
+        var docType = schemaAttr.DocType;
+    
+        // 2. Find the latest registered version for this DTO's DocType.
+        var latestVersion = _registry.FindLatestVersion(docType);
+
+        if (latestVersion == null)
+        {
+            throw new InvalidOperationException($"No versions are registered for DocType '{docType}'. Cannot determine the latest version to save.");
+        }
+
+        // 3. Create the meta block for the latest version.
+        var meta = new MetaBlock(docType, latestVersion);
+
+        // 4. Serialize the document and add the meta block.
+        var jobject = JObject.FromObject(document);
+        jobject["_meta"] = JObject.FromObject(meta);
+        var json = jobject.ToString(Formatting.Indented);
+    
+        // 5. Perform an atomic write to the file system.
         var tempFilePath = Path.GetTempFileName();
         await File.WriteAllTextAsync(tempFilePath, json, Encoding.UTF8);
         File.Move(tempFilePath, path, overwrite: true);

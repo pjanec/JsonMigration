@@ -27,7 +27,9 @@ public class MigrationRunnerTests
     {
         // Arrange
         var runner = CreateMigrationRunner();
-        var document = new VersionedDocument("test-1", new JObject { ["name"] = "test" }, new MetaBlock("Test", "1.0"));
+        var document = new VersionedDocument("test-1", 
+            new JObject { ["timeout"] = 30, ["plugins"] = new JArray("auth") }, 
+            new MetaBlock("PkgConf", "1.0"));
         var bundle = new DocumentBundle(document, new List<Snapshot>());
         var bundles = new[] { bundle };
 
@@ -52,7 +54,9 @@ public class MigrationRunnerTests
     {
         // Arrange
         var runner = CreateMigrationRunner();
-        var document = new VersionedDocument("test-1", new JObject { ["name"] = "test" }, new MetaBlock("Test", "1.0"));
+        var document = new VersionedDocument("test-1", 
+            new JObject { ["timeout"] = 30, ["plugins"] = new JArray("auth") }, 
+            new MetaBlock("PkgConf", "1.0"));
         var bundle = new DocumentBundle(document, new List<Snapshot>());
         var bundles = new[] { bundle };
 
@@ -78,13 +82,15 @@ public class MigrationRunnerTests
     {
         // Arrange
         var runner = CreateMigrationRunner();
-        var document = new VersionedDocument("test-1", new JObject { ["name"] = "test" }, new MetaBlock("Test", "1.0"));
+        var document = new VersionedDocument("test-1", 
+            new JObject { ["timeout"] = 30, ["plugins"] = new JArray("auth", "logging") }, 
+            new MetaBlock("PkgConf", "1.0"));
         var bundle = new DocumentBundle(document, new List<Snapshot>());
         var bundles = new[] { bundle };
 
         var plan = new MigrationPlan(
-            new PlanHeader("1.1", DateTime.UtcNow),
-            new[] { new PlanAction("test-1", ActionType.STANDARD_UPGRADE, "Upgrade from 1.0 to 1.1") });
+            new PlanHeader("2.0", DateTime.UtcNow),
+            new[] { new PlanAction("test-1", ActionType.STANDARD_UPGRADE, "Upgrade from 1.0 to 2.0") });
 
         // Act
         var result = await runner.ExecutePlanAsync(plan, bundles);
@@ -95,6 +101,6 @@ public class MigrationRunnerTests
         Assert.Equal(1, result.Summary.Succeeded);
         Assert.Equal(0, result.Summary.Failed);
         Assert.Single(result.SuccessfulDocuments);
-        Assert.Equal("1.1", result.SuccessfulDocuments[0].Result.NewMetadata.SchemaVersion);
+        Assert.Equal("2.0", result.SuccessfulDocuments[0].Result.NewMetadata.SchemaVersion);
     }
 }

@@ -1,3 +1,4 @@
+using MigrationSystem.Core.Public;
 using MigrationSystem.Core.Public.DataContracts;
 using MigrationSystem.Engine.Internal;
 using Newtonsoft.Json;
@@ -12,10 +13,19 @@ namespace MigrationSystem.Tests.Engine;
 
 public class ApplicationApiTests
 {
+    // Test DTO for the SaveLatestAsync test
+    [SchemaVersion("1.0", "TestDoc")]
+    public class TestDocument
+    {
+        public string Name { get; set; } = "";
+        public string Content { get; set; } = "";
+    }
+
     private ApplicationApi CreateApplicationApi()
     {
         var registry = new MigrationRegistry();
-        // Don't register migrations to avoid type conflicts
+        // Register the test assembly to pick up our test DTO
+        registry.RegisterMigrationsFromAssembly(Assembly.GetExecutingAssembly());
         
         var schemaGenerator = new DtoSchemaGenerator();
         var schemaRegistry = new SchemaRegistry(schemaGenerator);
@@ -43,9 +53,9 @@ public class ApplicationApiTests
 
         try
         {
-            // Act & Assert
+            // Act & Assert - Files without _meta blocks should throw an exception
             var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-                () => api.LoadLatestAsync<string>(tempFile, LoadBehavior.InMemoryOnly, false));
+                () => api.LoadLatestAsync<TestDocument>(tempFile, LoadBehavior.InMemoryOnly, false));
             
             Assert.Contains("does not contain a _meta block", exception.Message);
         }
@@ -64,7 +74,11 @@ public class ApplicationApiTests
         var api = CreateApplicationApi();
         var tempFile = Path.GetTempFileName();
         
-        var document = "test content";
+        var document = new TestDocument 
+        { 
+            Name = "Test",
+            Content = "test content" 
+        };
 
         try
         {
@@ -76,6 +90,14 @@ public class ApplicationApiTests
             
             var savedContent = await File.ReadAllTextAsync(tempFile);
             Assert.Contains("test content", savedContent);
+            Assert.Contains("_meta", savedContent); // Should have metadata
+            
+            // Verify the metadata is correct
+            var savedJObject = JObject.Parse(savedContent);
+            var meta = savedJObject["_meta"]?.ToObject<MetaBlock>();
+            Assert.NotNull(meta);
+            Assert.Equal("TestDoc", meta!.DocType);
+            Assert.Equal("1.0", meta.SchemaVersion);
         }
         finally
         {
