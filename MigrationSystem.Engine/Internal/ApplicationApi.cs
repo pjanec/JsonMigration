@@ -3,6 +3,7 @@ using MigrationSystem.Core.Public.DataContracts;
 using MigrationSystem.Core.Public.Exceptions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using NJsonSchema.Validation;
 using System;
 using System.IO;
 using System.Linq;
@@ -67,7 +68,13 @@ internal class ApplicationApi : IApplicationApi
         if (validate)
         {
             var schema = _schemaRegistry.GetSchema(fromType);
-            var errors = schema.Validate(jobject);
+            var errors = schema.Validate(
+                token: jobject,
+                settings: new JsonSchemaValidatorSettings
+                {
+                    PropertyStringComparer = StringComparer.OrdinalIgnoreCase
+                });
+    
             if (errors.Any())
             {
                 // Validation failed. Time to quarantine.
