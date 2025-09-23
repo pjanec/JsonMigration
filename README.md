@@ -1,4 +1,4 @@
-﻿[TOC]
+﻿
 
 
 
@@ -15,11 +15,11 @@ Its core philosophy is to **decouple an application's business logic from the co
 The library is built on a set of powerful, production-ready features designed to handle real-world operational challenges.
 
 * **Transparent In-Memory Migrations**: Applications can load older versions of data (e.g., a v1.0 file) and will transparently receive a fully migrated, up-to-date v2.0 object in memory, without the application code needing to be aware of the transformation.  
-* **Lossless, Symmetrical Rollbacks**: The system's most critical feature is its ability to handle a full upgrade -> edit -> rollback -> edit -> re-upgrade cycle without losing any user data. It uses a sophisticated **three-state merge** algorithm to intelligently combine changes from different versions.  
+* **Lossless, Symmetrical Rollbacks**: The system's most critical feature is its ability to handle a full upgrade -> edit -> rollback -> edit -> re-upgrade cycle without losing any user data. It uses a sophisticated **three-state merge** algorithm to intelligently combine changes from different versions.  See more details in [Merging](docs/Merging.md) document.
 * **Safe, Auditable Batch Operations**: For installers and administrators, all batch operations (like upgrading an entire directory of files) use a safe, two-phase **"Plan → Execute"** workflow. The system first generates a detailed, read-only "dry run" plan that can be reviewed and approved before any changes are committed to disk.  
 * **Storage Agnostic**: While providing first-class support for file-based data, the core engine is completely decoupled from the file system. A comprehensive public API allows developers to use the library's powerful migration and merge logic on data stored in **databases, caches, message queues**, or any other backend.  
-* **Code-First Schema Validation**: To ensure the application code remains the single source of truth, validation rules (like value ranges or string patterns) are defined directly on C\# DTOs using attributes. The library generates and caches formal JSON Schemas from these DTOs on-the-fly, eliminating the need to maintain separate, error-prone schema files.  
-* **Flexible File Discovery**: For file-based operations, the system uses a MigrationManifest.json file that allows operators to define both explicit file paths and powerful, rule-based discovery to automatically find and manage all relevant data files.  
+* **Code-First Schema Validation**: To ensure the application code remains the single source of truth, validation rules (like value ranges or string patterns) are defined directly on C\# DTOs using attributes. The library generates and caches formal JSON Schemas from these DTOs on-the-fly, eliminating the need to maintain separate, error-prone schema files. See more details in [Schema](docs/Schema.md) document. 
+* **Flexible File Discovery**: For file-based operations, the system uses a `MigrationManifest.json` file that allows operators to define both explicit file paths and powerful, rule-based discovery to automatically find and manage all relevant data files.  See [File Discovery](docs/File Discovery.md) document for more details.
 * **Robust Error Handling**: When an unrecoverable error occurs, the system doesn't just fail; it **quarantines** the problematic data. It produces a rich, structured diagnostic report that gives operators clear, actionable information to resolve the issue.
 
 ## **1.3 Core Design Principles**
@@ -29,9 +29,11 @@ The library's features are enabled by a set of robust architectural decisions.
 * **Layered & Decoupled Architecture**: The system is composed of distinct layers: high-level facades for consumers, an internal engine for orchestration, and a core set of contracts. This separation of concerns makes the library highly testable and maintainable.  
 * **Dependency Injection First**: The entire system is designed to be configured and used via a standard .NET dependency injection container, making it easy to integrate into any modern application.  
 * **Integrity via Hashing**: All snapshots, which are the key to rollback safety, have their filenames enriched with a **SHA-256 hash** of their content. The engine verifies this hash every time a snapshot is read, guaranteeing that migrations are never performed with corrupt or tampered data.  
-* **Stateless Core Logic**: The internal engine components are stateless, receiving all necessary information through their method calls. This makes the core logic predictable, thread-safe, and easy to reason about.
+* **Stateless Core Logic**: The internal engine components are stateless, receiving all necessary information through their method calls. This makes the core logic predictable, thread-safe, and easy to reason about. See more details in [Modules](docs/Modules.md) document.
 
 This design results in a powerful, flexible, and exceptionally safe library that provides a comprehensive solution to the challenges of data schema evolution.
+
+See more details in [Concepts](docs/Concepts.md) document.
 
 <br>
 
@@ -92,7 +94,7 @@ public class Migrate_PkgConf_1_0_To_2_0 : IJsonMigration<PkgConfV1, PkgConfV2>
 
 ## **2.2. Register in Dependency Injection**
 
-In your application's startup code (e.g., Program.cs), use the AddMigrationSystem extension method to register the library and its services.
+In your application's startup code (e.g., Program.cs), use the `AddMigrationSystem` extension method to register the library and its services.
 
 ```csharp
 // In your Program.cs or other startup configuration  
@@ -113,7 +115,7 @@ builder.Services.AddMigrationSystem(options =>
 
 ## **Scenario 3.1: Loading and Displaying a Document**
 
-The IApplicationApi makes loading files transparent. Your application code will always receive the latest DTO, even if the file on disk is an older version.
+The `IApplicationApi` makes loading files transparent. Your application code will always receive the latest DTO, even if the file on disk is an older version.
 
 ```csharp
 public class EditorViewModel  
@@ -155,7 +157,7 @@ public class EditorViewModel
 
 ## **Scenario 3.2: Saving a Document (Migrate on Disk)**
 
-When you want to not only load a file but also automatically upgrade it on disk, use the MigrateOnDisk behavior. This performs a safe, snapshot-based write.
+When you want to not only load a file but also automatically upgrade it on disk, use the `MigrateOnDisk` behavior. This performs a safe, snapshot-based write.
 
 ```csharp
 public class EditorService  
