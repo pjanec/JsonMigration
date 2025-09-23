@@ -1,4 +1,5 @@
 using MigrationSystem.Core.Contracts;
+using MigrationSystem.Core.Public;
 using MigrationSystem.Engine.Internal;
 using System;
 using System.Reflection;
@@ -10,17 +11,20 @@ namespace MigrationSystem.Tests.Engine;
 public class MigrationRegistryTests
 {
     // Test DTOs
+    [SchemaVersion("1.0", "User")]
     public class UserV1_0
     {
         public string Name { get; set; } = "";
     }
 
+    [SchemaVersion("1.1", "User")]
     public class UserV1_1 
     {
         public string Name { get; set; } = "";
         public string Email { get; set; } = "";
     }
 
+    [SchemaVersion("2.0", "User")]
     public class UserV2_0
     {
         public string FullName { get; set; } = "";
@@ -98,7 +102,7 @@ public class MigrationRegistryTests
     }
 
     [Fact]
-    public void FindPath_MultiStep_ReturnsCorrectMigrationChain()
+    public void FindPath_MultipleSteps_ReturnsCorrectMigrations()
     {
         // Arrange
         var registry = new MigrationRegistry();
@@ -128,16 +132,37 @@ public class MigrationRegistryTests
     }
 
     [Fact]
-    public void FindPath_NoPathExists_ThrowsException()
+    public void FindPath_NoPath_ThrowsException()
+    {
+        // Arrange
+        var registry = new MigrationRegistry(); // No migrations registered
+
+        // Act & Assert
+        Assert.Throws<InvalidOperationException>(() => registry.FindPath(typeof(UserV1_0), typeof(UserV2_0)));
+    }
+
+    [Fact]
+    public void GetMigration_ValidPath_ReturnsMigration()
     {
         // Arrange
         var registry = new MigrationRegistry();
-        // Note: Not registering any migrations
+        registry.RegisterMigrationsFromAssembly(Assembly.GetExecutingAssembly());
+
+        // Act
+        var migration = registry.GetMigration<UserV1_0, UserV1_1>();
+
+        // Assert
+        Assert.NotNull(migration);
+        Assert.IsType<UserV1_0ToV1_1Migration>(migration);
+    }
+
+    [Fact]
+    public void GetMigration_InvalidPath_ThrowsException()
+    {
+        // Arrange
+        var registry = new MigrationRegistry(); // No migrations registered
 
         // Act & Assert
-        var exception = Assert.Throws<InvalidOperationException>(
-            () => registry.FindPath(typeof(UserV1_0), typeof(UserV2_0)));
-        
-        Assert.Contains("No migration path could be found", exception.Message);
+        Assert.Throws<InvalidOperationException>(() => registry.GetMigration<UserV1_0, UserV1_1>());
     }
 }

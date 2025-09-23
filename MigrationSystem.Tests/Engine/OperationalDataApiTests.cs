@@ -29,7 +29,9 @@ public class OperationalDataApiTests
     {
         // Arrange
         var api = CreateOperationalDataApi();
-        var document = new VersionedDocument("test-1", new JObject { ["name"] = "test" }, new MetaBlock("Test", "1.0"));
+        var document = new VersionedDocument("test-1", 
+            new JObject { ["timeout"] = 30, ["plugins"] = new JArray("auth", "logging") }, 
+            new MetaBlock("PkgConf", "1.0"));
         var bundle = new DocumentBundle(document, new List<Snapshot>());
         var bundles = new[] { bundle };
 
@@ -47,16 +49,21 @@ public class OperationalDataApiTests
     {
         // Arrange
         var api = CreateOperationalDataApi();
-        var document = new VersionedDocument("test-1", new JObject { ["name"] = "test" }, new MetaBlock("Test", "2.0"));
+        var document = new VersionedDocument("test-1", 
+            new JObject { 
+                ["execution_timeout"] = 30, 
+                ["plugins"] = new JObject { ["auth"] = new JObject { ["enabled"] = true } }
+            }, 
+            new MetaBlock("PkgConf", "2.0"));
         var bundle = new DocumentBundle(document, new List<Snapshot>());
         var bundles = new[] { bundle };
 
         // Act
-        var plan = await api.PlanRollbackAsync(bundles, "1.5");
+        var plan = await api.PlanRollbackAsync(bundles, "1.0");
 
         // Assert
         Assert.NotNull(plan);
-        Assert.Equal("1.5", plan.Header.TargetVersion);
+        Assert.Equal("1.0", plan.Header.TargetVersion);
         Assert.Single(plan.Actions);
     }
 
@@ -65,7 +72,9 @@ public class OperationalDataApiTests
     {
         // Arrange
         var api = CreateOperationalDataApi();
-        var document = new VersionedDocument("test-1", new JObject { ["name"] = "test" }, new MetaBlock("Test", "1.0"));
+        var document = new VersionedDocument("test-1", 
+            new JObject { ["timeout"] = 30, ["plugins"] = new JArray("auth") }, 
+            new MetaBlock("PkgConf", "1.0"));
         var bundle = new DocumentBundle(document, new List<Snapshot>());
         var bundles = new[] { bundle };
 

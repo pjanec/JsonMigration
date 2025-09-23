@@ -1,9 +1,11 @@
+using MigrationSystem.Core.Public;
 using MigrationSystem.Core.Validation;
 using System.Collections.Generic;
 
 namespace MigrationSystem.Tests.TestMigrations.PkgConf;
 
-public class PkgConfV2_0
+[SchemaVersion("2.0", "PkgConf")]
+public class ImprovedPackageConfiguration // Renamed from PkgConfV2_0
 {
     [NumberRange(1, 300)]
     public int Execution_timeout { get; set; }

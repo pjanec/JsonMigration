@@ -1,4 +1,5 @@
 using MigrationSystem.Core.Contracts;
+using MigrationSystem.Core.Public;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,15 +9,20 @@ namespace MigrationSystem.Engine.Internal;
 
 /// <summary>
 /// Scans assemblies to discover, register, and build paths for all available IJsonMigration implementations.
+/// Enhanced with attribute-based DTO discovery using [SchemaVersion] attributes.
 /// </summary>
 internal class MigrationRegistry
 {
     private readonly Dictionary<(Type from, Type to), object> _migrations = new();
-    private readonly Dictionary<(string docType, string version), Type> _typeMap = new();
+    private readonly Dictionary<string, IReadOnlyDictionary<string, Type>> _docTypeVersionMap = new();
     private readonly Dictionary<Type, (string docType, string version)> _reverseTypeMap = new();
 
     public void RegisterMigrationsFromAssembly(Assembly assembly)
     {
+        // --- New: Discover and register DTOs via attributes ---
+        DiscoverAndRegisterVersionedDtos(assembly);
+
+        // --- Existing logic for registering migration classes ---
         var migrationInterface = typeof(IJsonMigration<,>);
         var allDtoTypes = new HashSet<Type>();
 
@@ -38,27 +44,74 @@ internal class MigrationRegistry
             allDtoTypes.Add(toType);
         }
         
+        // Verify all DTO types used in migrations have SchemaVersion attributes
         foreach (var dtoType in allDtoTypes)
         {
-            // A more robust inference might use a custom attribute on the DTO
-            var nameParts = dtoType.Name.Split('V');
-            if (nameParts.Length == 2)
+            if (!_reverseTypeMap.ContainsKey(dtoType))
             {
-                var docType = nameParts[0];
-                var version = nameParts[1].Replace('_', '.');
-                _typeMap[(docType, version)] = dtoType;
-                _reverseTypeMap[dtoType] = (docType, version);
+                throw new InvalidOperationException($"DTO type '{dtoType.FullName}' is used in migrations but does not have a [SchemaVersion] attribute.");
             }
         }
     }
 
+    // --- New Private Helper Method ---
+    private void DiscoverAndRegisterVersionedDtos(Assembly assembly)
+    {
+        var versionedTypes = assembly.GetTypes()
+            .Where(t => t.IsClass && t.GetCustomAttribute<SchemaVersionAttribute>() != null)
+            .ToList();
+
+        var groupedByDocType = versionedTypes.GroupBy(t => t.GetCustomAttribute<SchemaVersionAttribute>()!.DocType);
+
+        foreach (var group in groupedByDocType)
+        {
+            var docType = group.Key;
+            var versionMap = group.ToDictionary(
+                t => t.GetCustomAttribute<SchemaVersionAttribute>()!.Version,
+                t => t
+            );
+
+            if (_docTypeVersionMap.ContainsKey(docType))
+            {
+                // Handle potential conflicts if registering multiple assemblies
+                throw new InvalidOperationException($"Document type '{docType}' is already registered.");
+            }
+            
+            _docTypeVersionMap[docType] = versionMap;
+            
+            // Populate reverse map for quick lookups
+            foreach (var kvp in versionMap)
+            {
+                _reverseTypeMap[kvp.Value] = (docType, kvp.Key);
+            }
+        }
+    }
+
+    // --- Updated Method to use the new map ---
     public Type GetTypeForVersion(string docType, string version)
     {
-        if (_typeMap.TryGetValue((docType, version), out var type))
+        if (!_docTypeVersionMap.TryGetValue(docType, out var versionMap))
         {
-            return type;
+            throw new ArgumentException($"DocType '{docType}' has no registered schemas.");
         }
-        throw new InvalidOperationException($"No DTO type found for DocType '{docType}' and Version '{version}'.");
+
+        if (!versionMap.TryGetValue(version, out var type))
+        {
+            throw new ArgumentException($"Version '{version}' for DocType '{docType}' is not a registered schema.");
+        }
+
+        return type;
+    }
+
+    // --- New Method for getting version from type ---
+    public string GetVersionFromType(Type dtoType)
+    {
+        var attr = dtoType.GetCustomAttribute<SchemaVersionAttribute>();
+        if (attr == null)
+        {
+            throw new ArgumentException($"Type '{dtoType.FullName}' is not a registered versioned DTO. Does it have a [SchemaVersion] attribute?");
+        }
+        return attr.Version;
     }
 
     /// <summary>

@@ -11,12 +11,13 @@ namespace MigrationSystem.Tests.TestMigrations.PkgConf;
 /// <summary>
 /// This migration now implements ISemanticMigration to provide custom merge logic
 /// for the 'plugins' property, which transforms from a List to a Dictionary.
+/// Updated to use the new clean DTO names with SchemaVersion attributes.
 /// </summary>
-public class Migrate_PkgConf_1_0_To_2_0 : IJsonMigration<PkgConfV1_0, PkgConfV2_0>, ISemanticMigration
+public class MigratePackageConfiguration : IJsonMigration<PackageConfiguration, ImprovedPackageConfiguration>, ISemanticMigration
 {
-    public Task<PkgConfV2_0> ApplyAsync(PkgConfV1_0 fromDto)
+    public Task<ImprovedPackageConfiguration> ApplyAsync(PackageConfiguration fromDto)
     {
-        var toDto = new PkgConfV2_0
+        var toDto = new ImprovedPackageConfiguration
         {
             Execution_timeout = fromDto.Timeout,
             Plugins = fromDto.Plugins.ToDictionary(
@@ -28,9 +29,9 @@ public class Migrate_PkgConf_1_0_To_2_0 : IJsonMigration<PkgConfV1_0, PkgConfV2_
         return Task.FromResult(toDto);
     }
 
-    public Task<PkgConfV1_0> ReverseAsync(PkgConfV2_0 toDto)
+    public Task<PackageConfiguration> ReverseAsync(ImprovedPackageConfiguration toDto)
     {
-        var fromDto = new PkgConfV1_0
+        var fromDto = new PackageConfiguration
         {
             Timeout = toDto.Execution_timeout,
             Plugins = toDto.Plugins.Keys.ToList()

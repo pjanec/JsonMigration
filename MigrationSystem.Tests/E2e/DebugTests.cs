@@ -49,8 +49,8 @@ public class DebugTests
         // Check if we can find a migration path
         try
         {
-            var v1Type = typeof(TestMigrations.PkgConf.PkgConfV1_0);
-            var v2Type = typeof(TestMigrations.PkgConf.PkgConfV2_0);
+            var v1Type = typeof(TestMigrations.PkgConf.PackageConfiguration);
+            var v2Type = typeof(TestMigrations.PkgConf.ImprovedPackageConfiguration);
             var path = registry.FindPath(v1Type, v2Type);
             _output.WriteLine($"Migration path found with {path.Count} steps");
         }

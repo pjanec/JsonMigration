@@ -202,7 +202,7 @@ public class RoundTripTests : IDisposable
 
         // ACT & ASSERT: The operation should throw and the file should be moved.
         await Assert.ThrowsAsync<MigrationQuarantineException>(() =>
-            appApi.LoadLatestAsync<TestMigrations.PkgConf.PkgConfV2_0>(testFile, LoadBehavior.InMemoryOnly, validate: true)
+            appApi.LoadLatestAsync<TestMigrations.PkgConf.ImprovedPackageConfiguration>(testFile, LoadBehavior.InMemoryOnly, validate: true)
         );
         
         File.Exists(testFile).Should().BeFalse(); // Verify original file was moved
