@@ -27,7 +27,6 @@
   <ItemGroup>
     <ProjectReference Include="..\MigrationSystem.Core\MigrationSystem.Core.csproj" />
     <ProjectReference Include="..\MigrationSystem.Engine\MigrationSystem.Engine.csproj" />
-    <ProjectReference Include="..\MigrationSystem.TestHelpers\MigrationSystem.TestHelpers.csproj" />
   </ItemGroup>
 
   <ItemGroup>

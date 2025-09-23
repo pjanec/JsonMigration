@@ -20,8 +20,9 @@ public class ApplicationApiTests
         var schemaGenerator = new DtoSchemaGenerator();
         var schemaRegistry = new SchemaRegistry(schemaGenerator);
         var snapshotManager = new SnapshotManager();
+        var quarantineManager = new QuarantineManager(null); // No quarantine directory for tests
 
-        return new ApplicationApi(registry, schemaRegistry, snapshotManager);
+        return new ApplicationApi(registry, schemaRegistry, snapshotManager, quarantineManager);
     }
 
     [Fact]

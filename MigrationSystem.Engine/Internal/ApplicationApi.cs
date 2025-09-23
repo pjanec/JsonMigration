@@ -6,6 +6,7 @@ using Newtonsoft.Json.Linq;
 using System;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -19,12 +20,14 @@ internal class ApplicationApi : IApplicationApi
     private readonly MigrationRegistry _registry;
     private readonly SchemaRegistry _schemaRegistry;
     private readonly SnapshotManager _snapshotManager;
+    private readonly QuarantineManager _quarantineManager;
 
-    public ApplicationApi(MigrationRegistry registry, SchemaRegistry schemaRegistry, SnapshotManager snapshotManager)
+    public ApplicationApi(MigrationRegistry registry, SchemaRegistry schemaRegistry, SnapshotManager snapshotManager, QuarantineManager quarantineManager)
     {
         _registry = registry;
         _schemaRegistry = schemaRegistry;
         _snapshotManager = snapshotManager;
+        _quarantineManager = quarantineManager;
     }
 
     public async Task<LoadResult<T>> LoadLatestAsync<T>(string path, LoadBehavior behavior, bool validate) where T : class
@@ -48,9 +51,17 @@ internal class ApplicationApi : IApplicationApi
             var errors = schema.Validate(jobject);
             if (errors.Any())
             {
-                var quarantineRecord = new QuarantineRecord(path, "SchemaValidationFailure", string.Join("; ", errors.Select(e => e.ToString())), "", "Fix data to conform to schema.");
-                // This would be a MigrationQuarantineException in the DataApi
-                throw new Exception($"Schema validation failed: {quarantineRecord.Details}");
+                // Validation failed. Time to quarantine.
+                var contentHash = ComputeSha256(jsonContent);
+                var details = string.Join("; ", errors.Select(e => e.ToString()));
+                var quarantineRecord = new QuarantineRecord(path, "SchemaValidationFailure", details, contentHash, "Fix data to conform to schema.");
+                
+                // This is a fire-and-forget call for simplicity. A more robust system
+                // might await this and include the report path in the exception.
+                _ = _quarantineManager.QuarantineFileAsync(path, quarantineRecord);
+
+                // Throw a specific exception
+                throw new MigrationQuarantineException($"Schema validation failed: {details}", quarantineRecord, jobject, meta);
             }
         }
 
@@ -88,5 +99,13 @@ internal class ApplicationApi : IApplicationApi
         var tempFilePath = Path.GetTempFileName();
         await File.WriteAllTextAsync(tempFilePath, json, Encoding.UTF8);
         File.Move(tempFilePath, path, overwrite: true);
+    }
+
+    // Add a helper method to compute the hash for the quarantine record
+    private string ComputeSha256(string content)
+    {
+        using var sha256 = SHA256.Create();
+        var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(content));
+        return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 }

@@ -15,12 +15,14 @@ internal class OperationalApi : IOperationalApi
     private readonly IDiscoveryService _discovery;
     private readonly IOperationalDataApi _dataApi;
     private readonly SnapshotManager _snapshotManager; // For writing results
+    private readonly QuarantineManager _quarantineManager;
 
-    public OperationalApi(IDiscoveryService discovery, IOperationalDataApi dataApi, SnapshotManager snapshotManager)
+    public OperationalApi(IDiscoveryService discovery, IOperationalDataApi dataApi, SnapshotManager snapshotManager, QuarantineManager quarantineManager)
     {
         _discovery = discovery;
         _dataApi = dataApi;
         _snapshotManager = snapshotManager;
+        _quarantineManager = quarantineManager;
     }
 
     public async Task<MigrationPlan> PlanUpgradeFromManifestAsync(string? manifestPath = null)
@@ -57,9 +59,14 @@ internal class OperationalApi : IOperationalApi
             // ... logic to delete old snapshots ...
         }
 
+        // This is the new part: handle all the failures reported by the core engine.
         foreach (var failure in result.FailedDocuments)
         {
-            // ... logic to write quarantine file ...
+            var sourceFilePath = failure.Identifier; // Identifier is the file path
+            if (File.Exists(sourceFilePath))
+            {
+                await _quarantineManager.QuarantineFileAsync(sourceFilePath, failure.QuarantineRecord);
+            }
         }
 
         return result;

@@ -16,7 +16,7 @@ internal class MigrationSystemFacade : IMigrationSystem
     public IDiscoveryService Discovery { get; }
 
     // The constructor will receive all the configured internal services from the DI container.
-    public MigrationSystemFacade(MigrationRegistry registry, SnapshotManager snapshotManager, SchemaRegistry schemaRegistry)
+    public MigrationSystemFacade(MigrationRegistry registry, SnapshotManager snapshotManager, SchemaRegistry schemaRegistry, QuarantineManager quarantineManager)
     {
         // Create internal components
         var planner = new MigrationPlanner(registry);
@@ -24,10 +24,10 @@ internal class MigrationSystemFacade : IMigrationSystem
         var runner = new MigrationRunner(merger, registry);
 
         // Compose the concrete implementations of our public facades
-        this.Application = new ApplicationApi(registry, schemaRegistry, snapshotManager);
+        this.Application = new ApplicationApi(registry, schemaRegistry, snapshotManager, quarantineManager);
         this.OperationalData = new OperationalDataApi(planner, runner);
         this.Discovery = new FileDiscoverer();
-        this.Operations = new OperationalApi(this.Discovery, this.OperationalData, snapshotManager);
+        this.Operations = new OperationalApi(this.Discovery, this.OperationalData, snapshotManager, quarantineManager);
         
         // ... instantiate other facades here
         this.Data = null!; // Placeholder

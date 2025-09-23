@@ -7,8 +7,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MigrationSystem.Core", "Mig
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MigrationSystem.Engine", "MigrationSystem.Engine\MigrationSystem.Engine.csproj", "{09450738-DFCE-4A1A-AE07-2CA8B6373494}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MigrationSystem.TestHelpers", "MigrationSystem.TestHelpers\MigrationSystem.TestHelpers.csproj", "{70563E86-D350-4197-9B0F-42E23904BCEA}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MigrationSystem.Tests", "MigrationSystem.Tests\MigrationSystem.Tests.csproj", "{90E89002-66B9-4191-B495-8105FB2AC4C9}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MigrationSystem.Cli", "MigrationSystem.Cli\MigrationSystem.Cli.csproj", "{FBC76679-C6AC-450F-9C52-A9438C1E7D33}"
@@ -47,18 +45,6 @@ Global
 		{09450738-DFCE-4A1A-AE07-2CA8B6373494}.Release|x64.Build.0 = Release|Any CPU
 		{09450738-DFCE-4A1A-AE07-2CA8B6373494}.Release|x86.ActiveCfg = Release|Any CPU
 		{09450738-DFCE-4A1A-AE07-2CA8B6373494}.Release|x86.Build.0 = Release|Any CPU
-		{70563E86-D350-4197-9B0F-42E23904BCEA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{70563E86-D350-4197-9B0F-42E23904BCEA}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{70563E86-D350-4197-9B0F-42E23904BCEA}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{70563E86-D350-4197-9B0F-42E23904BCEA}.Debug|x64.Build.0 = Debug|Any CPU
-		{70563E86-D350-4197-9B0F-42E23904BCEA}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{70563E86-D350-4197-9B0F-42E23904BCEA}.Debug|x86.Build.0 = Debug|Any CPU
-		{70563E86-D350-4197-9B0F-42E23904BCEA}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{70563E86-D350-4197-9B0F-42E23904BCEA}.Release|Any CPU.Build.0 = Release|Any CPU
-		{70563E86-D350-4197-9B0F-42E23904BCEA}.Release|x64.ActiveCfg = Release|Any CPU
-		{70563E86-D350-4197-9B0F-42E23904BCEA}.Release|x64.Build.0 = Release|Any CPU
-		{70563E86-D350-4197-9B0F-42E23904BCEA}.Release|x86.ActiveCfg = Release|Any CPU
-		{70563E86-D350-4197-9B0F-42E23904BCEA}.Release|x86.Build.0 = Release|Any CPU
 		{90E89002-66B9-4191-B495-8105FB2AC4C9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{90E89002-66B9-4191-B495-8105FB2AC4C9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{90E89002-66B9-4191-B495-8105FB2AC4C9}.Debug|x64.ActiveCfg = Debug|Any CPU
