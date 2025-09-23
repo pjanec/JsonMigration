@@ -1,184 +1,78 @@
-﻿# **Migration System \- Merge Algorithms Explained**
+﻿# Merging
 
-## **1\. Introduction**
+This document covers the most critical feature of MigrationSystem: the **three-state merge algorithm**. This is the engine's foundational logic for preventing user data loss during complex operations like a rollback followed by a re-upgrade.
 
-The MigrationSystem library uses two distinct algorithms to handle data transformations. The choice of algorithm is not manual; it is selected automatically by the MigrationPlanner and executed by the MigrationRunner based on the context of the operation. This ensures that the system is both fast for simple, everyday tasks and robustly safe for complex, high-risk scenarios like recovering from a rollback.
+## **1. Overview**
 
-The two algorithms are:
+In a traditional JSON migration system, each migration is a one-way trip. The system moves a document from Version A to Version B and does not preserve the original state. This works fine for simple migrations, but it creates a serious data loss problem when rollbacks are involved.
 
-1. **The Simple Two-Way Migration**: The standard, fast path for everyday upgrades and downgrades.  
-2. **The Three-State Merge**: The safe path, used exclusively to prevent data loss during a re-upgrade after a rollback.
+Consider this sequence:
 
-## **2\. Algorithm 1: The Simple Two-Way Migration (The Fast Path)**
+1. Upgrade: V1 → V2  
+2. User edits the V2 document  
+3. Rollback: V2 → V1  
+4. User edits the V1 document  
+5. Re-upgrade: V1 → V2  
 
-This is the workhorse of the migration system. It is a direct, stateless transformation between two schema versions.
+In step 5, a naive migration system would blindly re-apply the V1-to-V2 transformation, destroying all the user's work from step 2. MigrationSystem prevents this by using a sophisticated three-state merge algorithm.
 
-### **When is it used?**
+## **2. Algorithm 1: Standard Forward Migration (The Simple Path)**
 
-* During a **standard, first-time upgrade** (e.g., v1.0 → v2.0).  
-* During a **standard downgrade/rollback** (e.g., v2.0 → v1.0).  
-* When the MigrationPlanner finds no evidence of a previous rollback cycle (i.e., no conflicting snapshots).
+This is used when no rollback history is detected. The system simply applies the migration transformations from the current version to the target version.
 
-### **Why is it used?**
+**Example**: A V1 document with `timeout: 30` and `plugins: ["auth", "logging"]` becomes a V2 document with `execution_timeout: 30` and `plugins: {"auth": {"enabled": true}, "logging": {"enabled": true}}`.
 
-It is the simplest, fastest, and most efficient method for transforming data when there is no complex history of version changes to consider.
+## **3. Algorithm 2: The Hybrid Three-Way Merge (The Safe Path)**
 
-### **How it Works: A Concrete Example**
-
-Imagine upgrading a V1 document.
-
-**Input (config.v1.json):**
-
-{
-
-  "\_meta": { "DocType": "PkgConf", "SchemaVersion": "1.0" },
-
-  "timeout": 30,
-
-  "plugins": \["auth", "logging"\]
-
-}
-
-**The Process (Forward Migration):**
-
-1. **Create Snapshot**: The engine creates a verifiable snapshot containing the exact V1 content.  
-2. **Load V1 DTO**: The JSON is deserialized into a PkgConfV1 object.  
-3. **Transform**: The ApplyAsync() method of the Migrate\_PkgConf\_1\_0\_To\_2\_0 class is called. It renames timeout, converts the plugins array to a dictionary, and adds a default reporting object.  
-4. **Receive V2 DTO**: A new PkgConfV2 object is returned.  
-5. **Save V2 DTO**: The V2 DTO is serialized, atomically overwriting the original file.
-
-**Output (config.v2.json):**
-
-{
-
-  "\_meta": { "DocType": "PkgConf", "SchemaVersion": "2.0" },
-
-  "execution\_timeout": 30,
-
-  "plugins": {
-
-    "auth": { "enabled": true },
-
-    "logging": { "enabled": true }
-
-  },
-
-  "reporting": { "format": "json" }
-
-}
-
-## **3\. Algorithm 2: The Three-State Merge (The Safe Path)**
-
-This is the most powerful algorithm, designed solely to **prevent the loss of user data** after a rollback-and-re-upgrade cycle.
+This is the most powerful algorithm, designed solely to **prevent the loss of user data** after a rollback-and-re-upgrade cycle. It uses a sophisticated hybrid strategy that combines the precision of domain-specific "semantic handlers" with the power of a formal, structural merge algorithm.
 
 ### **When is it used?**
 
 It is used **exclusively and automatically** for a forward migration when the MigrationPlanner detects snapshots from a previous, completed rollback.
 
-### **Why is it used?**
+### **The Hybrid Merge Algorithm in Detail**
 
-A simple two-way migration would be destructive in this scenario. It would blindly re-apply the V1-to-V2 transformation, destroying any edits the user made in their previous V2 session. The three-state merge uses the historical snapshots to intelligently combine changes.
+The engine intelligently processes each property in the document, choosing the best tool for the job.
 
-### **The Inputs: A Detailed Example**
+1. **Semantic Handler Priority**: The merger first iterates through every property of the document. For each one, it checks if the migration class provides a custom **semantic handler** for that specific property (by implementing the ISemanticMigration interface).
+   * **If a handler exists** (as it does for plugins), the merger completely delegates the merging of that single property to the handler's custom logic. The handler is trusted to produce the correct, semantically-aware result.
+   * This ensures that fundamental transformations (like a List changing to a Dictionary) are handled with perfect, domain-specific accuracy.
 
-To perform the merge, the engine gathers three distinct VersionedDocument inputs.
+2. **Formal Structural Merge**: After all semantically-handled properties are processed and set aside, the engine performs a formal, patch-based merge on **all remaining properties** (Execution_timeout, Reporting, etc.).
+   * **Generate Diffs (Patches)**: The engine calculates two sets of changes using a JSON Patch library:
+     * **"Theirs" Patch**: A diff between the **THEIRS** snapshot and the **BASE** document.
+     * **"Mine" Patch**: A diff between the **MINE** document and the **BASE** document.
+   * **Merge Patches**: The engine creates a new, final patch by combining the operations from both patches. If a conflict occurs (i.e., the same property path was changed in both Mine and Theirs), it is resolved using the "Mine Wins" policy.
+   * **Apply Final Patch**: This single, merged patch is applied to the **BASE** document to produce the final state for all structurally-merged properties.
 
-1\. BASE (The Common Ancestor)
+3. **Combine Results**: The final document is constructed by combining the results from the semantic handlers with the results from the formal structural merge.
 
-The state of the document before the very first upgrade.
+### **Analysis of the Result:**
 
-{
+This hybrid process correctly resolves our test case:
 
-  "\_meta": { "DocType": "PkgConf", "SchemaVersion": "1.0" },
+* Plugins is merged by its **semantic handler**, which correctly understands that "auth" was removed in MINE.
+* Execution_timeout is merged by the **formal algorithm**. It detects a conflict and resolves it using the "Mine Wins" policy, resulting in 45.
+* Reporting is merged by the **formal algorithm**. It sees the property was only added in THEIRS and applies the change without conflict.
 
-  "timeout": 30,
+This hybrid process safely restores the user's work while preserving all compatible, non-conflicting changes they made after the rollback.
 
-  "plugins": \["auth", "logging"\]
+## **4. Conflict Resolution Policies**
 
-}
+When both "Mine" and "Theirs" modify the same property, the system follows a conflict resolution policy:
 
-2\. MINE (The Local Version)
+- **Mine Wins** (Default): The local changes take precedence
+- **Theirs Wins**: The remote/snapshot changes take precedence
 
-The current V1 document, which the user edited after the rollback. They changed timeout to 45 and removed the "auth" plugin.
+The policy can be configured per migration class through the semantic handler interface.
 
-{
+## **5. Implementation Details**
 
-  "\_meta": { "DocType": "PkgConf", "SchemaVersion": "1.0" },
+The three-state merge is implemented in the `ThreeWayMerger` class, which:
 
-  "timeout": 45,
+- Maintains backward compatibility with existing APIs
+- Supports the `ISemanticMigration` interface for domain-specific logic
+- Falls back to robust structural merging for general cases
+- Provides comprehensive error handling and graceful degradation
 
-  "plugins": \["logging"\]
-
-}
-
-3\. THEIRS (The Remote Version)
-
-The V2 snapshot, containing all the user's work from their previous V2 session. They changed execution\_timeout to 100, disabled "logging", and added a "cache" plugin.
-
-{
-
-  "\_meta": { "DocType": "PkgConf", "SchemaVersion": "2.0" },
-
-  "execution\_timeout": 100,
-
-  "plugins": {
-
-    "auth": { "enabled": true },
-
-    "logging": { "enabled": false },
-
-    "cache": { "enabled": true }
-
-  },
-
-  "reporting": { "format": "json" }
-
-}
-
-### **The Merge Algorithm in Detail**
-
-1. **Establish Common Ground**: The BASE (V1) object is migrated in-memory to V2. This creates a "virtual base V2" that looks like the simple upgrade output from Algorithm 1\. This is our clean slate for comparison.  
-2. **Generate Diffs (Patches)**: The engine calculates two sets of changes:  
-   * **"Theirs" Patch**: A diff between the **THEIRS** snapshot and the **virtual base V2**. This patch represents the user's work in V2.  
-     * replace /execution\_timeout with 100  
-     * replace /plugins/logging/enabled with false  
-     * add /plugins/cache with { "enabled": true }  
-   * **"Mine" Patch**: A diff between the **MINE** document (also migrated in-memory to V2) and the **virtual base V2**. This represents the user's work post-rollback.  
-     * replace /execution\_timeout with 45  
-     * remove /plugins/auth  
-3. Apply Patches & Resolve Conflicts: The engine applies these patches to a fresh copy of the virtual base V2.  
-   a. First, it applies the "Theirs" Patch in its entirety. The document now reflects all the V2 edits.  
-   b. Second, it intelligently applies the "Mine" Patch.  
-   \- It tries to apply remove /plugins/auth. This path was not changed by "Theirs", so the change is accepted. The "auth" plugin is removed.  
-   \- It tries to apply replace /execution\_timeout with 45\. This path was changed by "Theirs". This is a conflict. According to the policy, the "Theirs" change wins. The "Mine" operation is discarded, and the conflict is logged.
-
-### **The Final Merged Output**
-
-The final, merged JObject is then serialized to disk.
-
-{
-
-  "\_meta": { "DocType": "PkgConf", "SchemaVersion": "2.0" },
-
-  "execution\_timeout": 100,
-
-  "plugins": {
-
-    "logging": { "enabled": false },
-
-    "cache": { "enabled": true }
-
-  },
-
-  "reporting": { "format": "json" }
-
-}
-
-**Analysis of the Result:**
-
-* execution\_timeout is **100**: The "Theirs" change won the conflict. **Data preserved.**  
-* plugins.cache is present: The non-conflicting addition from "Theirs" was applied. **Data preserved.**  
-* plugins.logging is disabled: The non-conflicting change from "Theirs" was applied. **Data preserved.**  
-* plugins.auth is absent: The non-conflicting removal from "Mine" was applied. **User intent preserved.**
-
-This process safely restores the user's work from the newer V2 session while preserving any compatible, non-conflicting changes they made after the rollback.
+For technical implementation details, see the [Modules](Modules.md) documentation.

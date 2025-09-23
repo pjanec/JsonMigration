@@ -1,8 +1,4 @@
-﻿
-
-
-
-# **1\. Overview**
+﻿# **1\. Overview**
 
 ## **1.1 Purpose & Core Philosophy**
 
@@ -15,7 +11,7 @@ Its core philosophy is to **decouple an application's business logic from the co
 The library is built on a set of powerful, production-ready features designed to handle real-world operational challenges.
 
 * **Transparent In-Memory Migrations**: Applications can load older versions of data (e.g., a v1.0 file) and will transparently receive a fully migrated, up-to-date v2.0 object in memory, without the application code needing to be aware of the transformation.  
-* **Lossless, Symmetrical Rollbacks**: The system's most critical feature is its ability to handle a full upgrade -> edit -> rollback -> edit -> re-upgrade cycle without losing any user data. It uses a sophisticated **three-state merge** algorithm to intelligently combine changes from different versions.  See more details in [Merging](docs/Merging.md) document.
+* **Lossless, Symmetrical Rollbacks**: The system's most critical feature is its ability to handle a full upgrade -> edit -> rollback -> edit -> re-upgrade cycle without losing any user data. It uses a sophisticated **hybrid three-state merge** algorithm to intelligently combine changes from different versions.  See more details in [Merging](docs/Merging.md) document.
 * **Safe, Auditable Batch Operations**: For installers and administrators, all batch operations (like upgrading an entire directory of files) use a safe, two-phase **"Plan → Execute"** workflow. The system first generates a detailed, read-only "dry run" plan that can be reviewed and approved before any changes are committed to disk.  
 * **Storage Agnostic**: While providing first-class support for file-based data, the core engine is completely decoupled from the file system. A comprehensive public API allows developers to use the library's powerful migration and merge logic on data stored in **databases, caches, message queues**, or any other backend.  
 * **Code-First Schema Validation**: To ensure the application code remains the single source of truth, validation rules (like value ranges or string patterns) are defined directly on C\# DTOs using attributes. The library generates and caches formal JSON Schemas from these DTOs on-the-fly, eliminating the need to maintain separate, error-prone schema files. See more details in [Schema](docs/Schema.md) document. 
@@ -290,4 +286,3 @@ public class DocumentService
         }  
     }  
 } 
-```

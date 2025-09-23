@@ -139,14 +139,14 @@ This workflow is critical for both manual operator safety checks and automated C
 
 ### **4.2. The Three-State Merge Algorithm (Lossless Re-Upgrade)**
 
-This is the core algorithm for preserving user data after a rollback.
+This is the core algorithm for preserving user data after a rollback. It uses a **hybrid** approach, combining semantic handlers with a formal JSON Patch-based merge.
 
-1. **Discover**: The engine detects a document that needs to be upgraded and finds snapshots from a previous rollback.  
+1. **Discover**: The engine detects a document that needs to be upgraded and finds snapshots from a previous rollback.
 2. **Identify States**: It identifies the three necessary inputs:  
-   * **BASE**: The pre-upgrade snapshot from the original version. The common ancestor.  
-   * **MINE**: The current document on disk, which may have been edited after the rollback.  
-   * **THEIRS**: The pre-rollback snapshot from the newer version, containing the user's work.  
-3. **Merge**: Using a JSON Patch library, the engine calculates the diffs between (MINE, BASE) and (THEIRS, BASE). It applies these patches to a clean copy of the BASE, enforcing the conflict resolution policy (Theirs \> Mine).
+   * **BASE**: The pre-upgrade snapshot from the original version. The common ancestor.
+   * **MINE**: The current document on disk, which may have been edited after the rollback.
+   * **THEIRS**: The pre-rollback snapshot from the newer version, containing the user's work.
+3. **Merge**: Using the hybrid approach, the engine first applies any available semantic handlers for domain-specific properties (like plugins transformations), then uses formal JSON Patch algorithms for structural merging of remaining properties, enforcing the conflict resolution policy (Theirs > Mine).
 
 ### **4.3. The Installer Downgrade Workflow**
 
