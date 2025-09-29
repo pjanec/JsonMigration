@@ -29,6 +29,6 @@ internal class MigrationSystemFacade : IMigrationSystem
         this.OperationalData = new OperationalDataApi(planner, runner);
         this.Data = new DataApi(registry, schemaRegistry, this.OperationalData);
         this.Application = new ApplicationApi(registry, schemaRegistry, snapshotManager, quarantineManager);
-        this.Operations = new OperationalApi(discoveryService, this.OperationalData, snapshotManager, quarantineManager);
+        this.Operations = new OperationalApi(discoveryService, this.OperationalData, snapshotManager, quarantineManager, registry);
     }
 }

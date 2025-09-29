@@ -131,6 +131,18 @@ The Engine is the heart of the library. It is a collection of internal, stateles
 * **Inputs**: MigrationPlan, IEnumerable<DocumentBundle>.
 * **Outputs**: A MigrationResult object.
 
+### **3.8. TransactionManager (Conceptual)**
+
+* **Responsibilities**: While not a separate class, this is the logical component within the OperationalApi responsible for managing the lifecycle of a resilient transaction.
+* **Process**:
+  1. Creates and manages the on-disk journal file.
+  2. Orchestrates the backup of original files.
+  3. Updates the journal as the MigrationRunner completes operations.
+  4. Handles the commit phase by cleaning up artifacts on success.
+  5. Handles the recovery logic by reading a journal, restoring from backup, and re-initiating the MigrationRunner for pending operations.
+* **Inputs**: A MigrationPlan and a transaction storage path.
+* **Outputs**: A MigrationResult.
+
 ---
 
 ## **4. Public API Facades**
@@ -150,6 +162,10 @@ The public-facing interfaces are thin facades that orchestrate the internal engi
 * **Key Methods**:
   * `PlanUpgradeFromManifestAsync()`: Create a migration plan from discovered files.
   * `ExecutePlanAgainstFileSystemAsync()`: Execute a plan against the file system.
+  * `WriteSchemaConfigAsync()`: Generate and write the schema version config file.
+  * `PlanDowngradeFromConfigAsync()`: Create a plan from a schema version config.
+  * `FindIncompleteMigrationAsync()`: Check for pending transactions.
+  * `ResumeIncompleteMigrationAsync()`: Safely complete a pending transaction.
   * `RetryFailedFileSystemAsync()`: Retry failed operations.
   * `GarbageCollectSnapshotsAsync()`: Clean up obsolete snapshots.
 

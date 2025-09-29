@@ -113,4 +113,64 @@ internal class MigrationPlanner
         var plan = new MigrationPlan(header, actions);
         return Task.FromResult(plan);
     }
+
+    /// <summary>
+    /// Creates a migration plan based on a schema config file that specifies target versions for each document type.
+    /// Supports mixed upgrade/downgrade operations.
+    /// </summary>
+    public Task<MigrationPlan> PlanDowngradeFromConfigAsync(IEnumerable<DocumentBundle> documentBundles, SchemaConfig config)
+    {
+        var actions = new List<PlanAction>();
+        foreach (var bundle in documentBundles)
+        {
+            var doc = bundle.Document;
+            if (!config.SchemaVersions.TryGetValue(doc.Metadata.DocType, out var targetVersionStr))
+            {
+                actions.Add(new PlanAction(doc.Identifier, ActionType.SKIP, $"DocType '{doc.Metadata.DocType}' not found in schema config."));
+                continue;
+            }
+
+            var currentVersion = new Version(doc.Metadata.SchemaVersion);
+            var targetVersion = new Version(targetVersionStr);
+
+            if (currentVersion == targetVersion)
+            {
+                actions.Add(new PlanAction(doc.Identifier, ActionType.SKIP, "Document is already at the target version."));
+            }
+            else if (currentVersion < targetVersion)
+            {
+                // Handle upgrade case
+                try
+                {
+                    var fromType = _registry.GetTypeForVersion(doc.Metadata.DocType, doc.Metadata.SchemaVersion);
+                    var toType = _registry.GetTypeForVersion(doc.Metadata.DocType, targetVersionStr);
+                    var migrationPath = _registry.FindPath(fromType, toType);
+                    
+                    actions.Add(new PlanAction(doc.Identifier, ActionType.STANDARD_UPGRADE, $"Upgrade required from v{currentVersion} to v{targetVersion}."));
+                }
+                catch (InvalidOperationException ex)
+                {
+                    actions.Add(new PlanAction(doc.Identifier, ActionType.QUARANTINE, $"Cannot upgrade: {ex.Message}"));
+                }
+            }
+            else // currentVersion > targetVersion
+            {
+                // Handle downgrade case
+                try
+                {
+                    var fromType = _registry.GetTypeForVersion(doc.Metadata.DocType, doc.Metadata.SchemaVersion);
+                    var toType = _registry.GetTypeForVersion(doc.Metadata.DocType, targetVersionStr);
+                    
+                    actions.Add(new PlanAction(doc.Identifier, ActionType.STANDARD_DOWNGRADE, $"Downgrade required from v{currentVersion} to v{targetVersion}."));
+                }
+                catch (InvalidOperationException ex)
+                {
+                    actions.Add(new PlanAction(doc.Identifier, ActionType.QUARANTINE, $"Cannot downgrade: {ex.Message}"));
+                }
+            }
+        }
+        var header = new PlanHeader("custom", DateTime.UtcNow);
+        var plan = new MigrationPlan(header, actions);
+        return Task.FromResult(plan);
+    }
 }

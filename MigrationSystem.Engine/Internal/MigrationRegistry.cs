@@ -204,4 +204,13 @@ internal class MigrationRegistry
             .ToString();
     }
 
+    /// <summary>
+    /// Gets all registered document types for schema config generation.
+    /// </summary>
+    /// <returns>An enumerable of all registered document type names.</returns>
+    public IEnumerable<string> GetRegisteredDocTypes()
+    {
+        return _docTypeVersionMap.Keys;
+    }
+
 }

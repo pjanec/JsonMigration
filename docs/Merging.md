@@ -76,3 +76,50 @@ The three-state merge is implemented in the `ThreeWayMerger` class, which:
 - Provides comprehensive error handling and graceful degradation
 
 For technical implementation details, see the [Modules](Modules.md) documentation.
+
+
+
+# **Semantic Property Handlers: Concepts & Rationale**
+
+## **1\. The Limitation of Structural Merging**
+
+The core ThreeWayMerger in the Migration System is a powerful engine based on the formal, patch-based algorithm. It is exceptionally good at handling **structural changes**: adding new properties, removing old ones, and merging non-conflicting changes within nested objects.
+
+However, its one fundamental limitation is that it has no understanding of the **semantic meaning** behind a data transformation. It sees the "shape" of the data, but not the developer's intent.
+
+This limitation becomes critical when a migration performs a **fundamental change in data structure**. The classic example in this system is the plugins property in the PkgConf document:
+
+* **In V1.0:** plugins is a List\<string\>. Removing an item is a simple array element deletion.  
+* **In V2.0:** plugins is a Dictionary\<string, PkgConfV2\_0\_Plugin\>. The equivalent action is removing a key-value pair.
+
+A structural algorithm cannot possibly know that a user's intent to remove "auth" from the V1 list is semantically equivalent to removing the "auth" key from the V2 dictionary. This mismatch leads to incorrect merges and potential data loss.
+
+## **2\. The Solution: Injecting Domain Knowledge**
+
+A **Semantic Property Handler** is the solution to this problem. It is a targeted, high-precision mechanism that allows the author of a migration—the person with the most domain knowledge about the transformation—to override the generic merge logic for a *specific property*.
+
+The core principle is:
+
+The developer who creates the complex data transformation is the best person to define how to merge it.
+
+Instead of trying to make the generic merger infinitely intelligent, we give it a pluggable "escape hatch." For all standard properties, it uses its powerful structural algorithm. But for a property that has a registered semantic handler, it steps aside and says, "You're the expert, you handle this one."
+
+## **3\. How It Fits into the Hybrid Merge Engine**
+
+Semantic handlers are the first and most important stage of the hybrid merge algorithm.
+
+1. **Handler Priority:** Before performing any structural analysis, the ThreeWayMerger iterates through every property. It checks if the current migration class has implemented a semantic handler that claims responsibility for that property.  
+2. **Delegation:** If a handler is found for a property (e.g., plugins), the merger delegates the entire merge logic for that single property to the handler's custom code.  
+3. **Fallback to Formal Merge:** For all other properties that are *not* handled by a semantic override, the engine proceeds with the powerful, formal patch-based merge as usual.  
+4. **Combine Results:** The final document is a combination of the semantically-merged and structurally-merged properties.
+
+This hybrid approach provides the best of both worlds: the broad power of a generic algorithm and the sharp precision of domain-specific logic exactly where it's needed most.
+
+## **4\. Key Benefits**
+
+* **Precision:** Prevents data loss in complex scenarios where structural merging is inadequate.  
+* **Encapsulation:** The domain-specific merge logic lives directly within the migration class that defines the transformation, keeping related code together.  
+* **Extensibility:** Provides a clean pattern for handling future complex migrations without adding special-case hacks to the core merge engine.  
+* **Safety:** The default behavior is still the robust structural merge, ensuring that simple properties are always handled correctly and safely.
+
+  

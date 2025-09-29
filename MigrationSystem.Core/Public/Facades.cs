@@ -64,11 +64,27 @@ public interface IDataApi
 /// </summary>
 public interface IOperationalApi
 {
+    // --- EXISTING METHODS ---
     Task<MigrationPlan> PlanUpgradeFromManifestAsync(string? manifestPath = null);
     Task<MigrationPlan> PlanRollbackFromManifestAsync(string targetVersion, string? manifestPath = null);
-    Task<MigrationResult> ExecutePlanAgainstFileSystemAsync(MigrationPlan plan);
     Task<MigrationResult> RetryFailedFileSystemAsync(MigrationResult previousResult);
     Task<GcResult> GarbageCollectSnapshotsAsync(string? manifestPath = null);
+
+    // --- NEW & ENHANCED METHODS ---
+
+    // For 'produce-schema-config'
+    Task<Dictionary<string, string>> GetLatestSchemaVersionsAsync();
+    Task WriteSchemaConfigAsync(string outputFilePath);
+
+    // For multi-version migration
+    Task<MigrationPlan> PlanDowngradeFromConfigAsync(string configPath, string? manifestPath = null);
+
+    // For resumable execution (enhanced signature)
+    Task<MigrationResult> ExecutePlanAgainstFileSystemAsync(MigrationPlan plan, string? transactionStoragePath = null);
+
+    // For transaction management
+    Task<string?> FindIncompleteMigrationAsync(string transactionStoragePath);
+    Task<MigrationResult> ResumeIncompleteMigrationAsync(string transactionStoragePath);
 }
 
 /// <summary>

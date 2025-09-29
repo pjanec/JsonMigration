@@ -11,10 +11,12 @@ Its core philosophy is to **decouple an application's business logic from the co
 The library is built on a set of powerful, production-ready features designed to handle real-world operational challenges.
 
 * **Transparent In-Memory Migrations**: Applications can load older versions of data (e.g., a v1.0 file) and will transparently receive a fully migrated, up-to-date v2.0 object in memory, without the application code needing to be aware of the transformation.  
-* **Lossless, Symmetrical Rollbacks**: The system's most critical feature is its ability to handle a full upgrade -> edit -> rollback -> edit -> re-upgrade cycle without losing any user data. It uses a sophisticated **hybrid three-state merge** algorithm to intelligently combine changes from different versions.  See more details in [Merging](docs/Merging.md) document.
+* **Lossless, Symmetrical Rollbacks**: The system's most critical feature is its ability to handle a full upgrade -> edit -> rollback -> edit -> re-upgrade cycle without losing any user data. It uses a sophisticated **hybrid three-state merge** algorithm to intelligently combine changes from different versions. See more details in the [Merging](docs/Merging.md) document.
+* **Schema Version Locking**: For installers and deployment pipelines, the system can generate a schema_versions.json file, locking the precise version for every data type. Subsequent migrations can then target these exact versions, ensuring deterministic and repeatable deployments across environments.
+* **Power-Outage Resilient Transactions**: All file-based batch operations can be executed within an optional transactional context that is resistant to interruptions. Using an on-disk journal, the system can automatically resume and complete a failed migration, guaranteeing that data is never left in a corrupt or partially-migrated state.
 * **Safe, Auditable Batch Operations**: For installers and administrators, all batch operations (like upgrading an entire directory of files) use a safe, two-phase **"Plan → Execute"** workflow. The system first generates a detailed, read-only "dry run" plan that can be reviewed and approved before any changes are committed to disk.  
 * **Storage Agnostic**: While providing first-class support for file-based data, the core engine is completely decoupled from the file system. A comprehensive public API allows developers to use the library's powerful migration and merge logic on data stored in **databases, caches, message queues**, or any other backend.  
-* **Code-First Schema Validation**: To ensure the application code remains the single source of truth, validation rules (like value ranges or string patterns) are defined directly on C\# DTOs using attributes. The library generates and caches formal JSON Schemas from these DTOs on-the-fly, eliminating the need to maintain separate, error-prone schema files. See more details in [Schema](docs/Schema.md) document. 
+* **Code-First Schema Validation**: To ensure the application code remains the single source of truth, validation rules (like value ranges or string patterns) are defined directly on C# DTOs using attributes. The library generates and caches formal JSON Schemas from these DTOs on-the-fly, eliminating the need to maintain separate, error-prone schema files. See more details in [Schema](docs/Schema.md) document. 
 * **Flexible File Discovery**: For file-based operations, the system uses a `MigrationManifest.json` file that allows operators to define both explicit file paths and powerful, rule-based discovery to automatically find and manage all relevant data files.  See [File Discovery](docs/File Discovery.md) document for more details.
 * **Robust Error Handling**: When an unrecoverable error occurs, the system doesn't just fail; it **quarantines** the problematic data. It produces a rich, structured diagnostic report that gives operators clear, actionable information to resolve the issue.
 
@@ -182,61 +184,113 @@ public class EditorService
 
 # **4\. The Installer & CI/CD Engineer: Batch Operations**
 
-**Use Case**: An installer needs to safely downgrade all application data, or a CI/CD pipeline needs to run a pre-deployment migration.
+**Use Case**: A non-interactive application installer needs to safely downgrade or upgrade all application data to match the exact schema versions it was built to handle. The process must be atomic and recover automatically from interruptions like a power failure.
 
-## **Scenario 4.1: Performing a Safe, Auditable Upgrade**
+## **Scenario 4.1: Fully Automated, Resilient Migration for Installers**
+
+This workflow uses the IOperationalApi to coordinate schema locking and resilient execution.
+
+```csharp
+public class ApplicationInstaller
+{
+    private readonly IOperationalApi _opsApi;
+    // ...
+
+    public async Task<int> PerformDataMigration(string migrationMode, string installDir)
+    {
+        var transactionPath = Path.Combine(installDir, "_transactions");
+        Directory.CreateDirectory(transactionPath);
+
+        // 1. ALWAYS CHECK FOR AN INCOMPLETE MIGRATION FIRST
+        // Before any new operation, ensure a previous one is not pending.
+        if (await _opsApi.FindIncompleteMigrationAsync(transactionPath) != null)
+        {
+            Console.WriteLine("Incomplete migration detected. Attempting to resume...");
+            await _opsApi.ResumeIncompleteMigrationAsync(transactionPath);
+            Console.WriteLine("Resume operation completed successfully.");
+        }
+
+        // 2. CHOOSE MIGRATION STRATEGY (UPGRADE OR DOWNGRADE)
+        if (migrationMode == "upgrade")
+        {
+            // Standard upgrade to the latest versions defined in the code.
+            var plan = await _opsApi.PlanUpgradeFromManifestAsync();
+            var result = await _opsApi.ExecutePlanAgainstFileSystemAsync(plan, transactionPath);
+            // ... check result
+        }
+        else if (migrationMode == "downgrade")
+        {
+            // Multi-version migration to specific versions for this app release.
+            var schemaConfigPath = Path.Combine(installDir, "schema_versions.json");
+            
+            // a. Generate the schema config this app version expects.
+            await _opsApi.WriteSchemaConfigAsync(schemaConfigPath);
+            
+            // b. Plan the migration to match the config file exactly.
+            var plan = await _opsApi.PlanDowngradeFromConfigAsync(schemaConfigPath);
+            
+            // c. Execute the plan within the resilient transactional context.
+            var result = await _opsApi.ExecutePlanAgainstFileSystemAsync(plan, transactionPath);
+            // ... check result
+        }
+        return 0; // Success
+    }
+}
+```
+
+## **Scenario 4.2: Performing a Safe, Auditable Upgrade**
 
 The two-phase "Plan → Execute" workflow is essential for safety and automation.
 
 ```csharp
-public class DeploymentScript  
-{  
-    private readonly IOperationalApi _opsApi;  
+public class DeploymentScript
+{
+    private readonly IOperationalApi _opsApi;
     // ...
 
-    public async Task RunAutomatedUpgrade()  
-    {  
-        // --- PHASE 1: PLAN (Dry Run) ---  
-        // This is a safe, read-only operation. The manifest path is optional.  
-        Console.WriteLine("Planning migration...");  
-        var plan = await _opsApi.PlanUpgradeFromManifestAsync();  
-        Console.WriteLine($"Plan created: {plan.Actions.Count} actions to perform.");  
-        // In a real CI/CD pipeline, you would save this plan as an artifact  
+    public async Task RunAutomatedUpgrade()
+    {
+        // --- PHASE 1: PLAN (Dry Run) ---
+        // This is a safe, read-only operation. The manifest path is optional.
+        Console.WriteLine("Planning migration...");
+        var plan = await _opsApi.PlanUpgradeFromManifestAsync();
+        Console.WriteLine($"Plan created: {plan.Actions.Count} actions to perform.");
+        // In a real CI/CD pipeline, you would save this plan as an artifact
         // and pause for a manual approval gate.
-    
-        // --- PHASE 2: EXECUTE ---  
-        // After approval, execute the exact plan that was reviewed.  
-        Console.WriteLine("Executing migration plan...");  
+
+        // --- PHASE 2: EXECUTE ---
+        // After approval, execute the exact plan that was reviewed.
+        Console.WriteLine("Executing migration plan...");
         var result = await _opsApi.ExecutePlanAgainstFileSystemAsync(plan);
-    
-        // --- PHASE 3: VERIFY ---  
-        Console.WriteLine($"Migration complete. Status: {result.Summary.Status}");  
-        if (result.Summary.Failed > 0\)  
-        {  
-            Console.WriteLine("Migration completed with errors. Check result file for details.");  
-            // In a CI/CD pipeline, this would fail the deployment.  
-        }  
-    }  
+
+        // --- PHASE 3: VERIFY ---
+        Console.WriteLine($"Migration complete. Status: {result.Summary.Status}");
+        if (result.Summary.Failed > 0)
+        {
+            Console.WriteLine("Migration completed with errors. Check result file for details.");
+            // In a CI/CD pipeline, this would fail the deployment.
+        }
+    }
 }
 ```
 
-## **Scenario 4.2: Handling Batch Failures (Smart Retry)**
+## **Scenario 4.3: Handling Batch Failures (Smart Retry)**
 
 If a batch operation fails due to transient issues, you can use the MigrationResult to retry only the failed items.
 
 ```csharp
-public async Task HandleFailures(MigrationResult initialResult, IOperationalApi opsApi)  
-{  
-    if (initialResult.Summary.Failed == 0\) return;
+public async Task HandleFailures(MigrationResult initialResult, IOperationalApi opsApi)
+{
+    if (initialResult.Summary.Failed == 0) return;
 
-    Console.WriteLine("Initial migration failed. Waiting and retrying failed files...");  
+    Console.WriteLine("Initial migration failed. Waiting and retrying failed files...");
     await Task.Delay(TimeSpan.FromSeconds(5)); // Wait for transient issues to resolve
     
-    // The retry method uses the previous result to build a new plan  
-    // containing only the previously failed files.  
+    // The retry method uses the previous result to build a new plan
+    // containing only the previously failed files.
     var retryResult = await opsApi.RetryFailedFileSystemAsync(initialResult);
     
-    Console.WriteLine($"Retry complete. Status: {retryResult.Summary.Status}");  
+    Console.WriteLine($"Retry complete. Status: {retryResult.Summary.Status}");
 }
 ```
 

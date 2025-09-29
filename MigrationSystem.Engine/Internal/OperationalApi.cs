@@ -17,13 +17,15 @@ internal class OperationalApi : IOperationalApi
     private readonly IOperationalDataApi _dataApi;
     private readonly SnapshotManager _snapshotManager;
     private readonly QuarantineManager _quarantineManager;
+    private readonly MigrationRegistry _registry;
 
-    public OperationalApi(IDiscoveryService discovery, IOperationalDataApi dataApi, SnapshotManager snapshotManager, QuarantineManager quarantineManager)
+    public OperationalApi(IDiscoveryService discovery, IOperationalDataApi dataApi, SnapshotManager snapshotManager, QuarantineManager quarantineManager, MigrationRegistry registry)
     {
         _discovery = discovery;
         _dataApi = dataApi;
         _snapshotManager = snapshotManager;
         _quarantineManager = quarantineManager;
+        _registry = registry;
     }
 
     public async Task<MigrationPlan> PlanUpgradeFromManifestAsync(string? manifestPath = null)
@@ -132,7 +134,230 @@ internal class OperationalApi : IOperationalApi
         }
         return new GcResult();
     }
-    
+
+    // --- NEW SCHEMA CONFIG MANAGEMENT METHODS ---
+
+    public async Task<Dictionary<string, string>> GetLatestSchemaVersionsAsync()
+    {
+        var versions = new Dictionary<string, string>();
+        foreach (var docType in _registry.GetRegisteredDocTypes())
+        {
+            var latestVersion = _registry.FindLatestVersion(docType);
+            if (latestVersion != null)
+            {
+                versions[docType] = latestVersion;
+            }
+        }
+        return versions;
+    }
+
+    public async Task WriteSchemaConfigAsync(string outputFilePath)
+    {
+        var versions = await GetLatestSchemaVersionsAsync();
+        var config = new SchemaConfig(versions);
+        // Create a simple wrapper for JSON serialization
+        var jsonObject = new { SchemaVersions = config.SchemaVersions };
+        var json = JsonConvert.SerializeObject(jsonObject, Formatting.Indented);
+        await File.WriteAllTextAsync(outputFilePath, json);
+    }
+
+    public async Task<MigrationPlan> PlanDowngradeFromConfigAsync(string configPath, string? manifestPath = null)
+    {
+        // Load the schema config
+        var configJson = await File.ReadAllTextAsync(configPath);
+        var configData = JsonConvert.DeserializeObject<Dictionary<string, object>>(configJson);
+        var schemaVersionsJson = configData?["SchemaVersions"]?.ToString();
+        var schemaVersions = JsonConvert.DeserializeObject<Dictionary<string, string>>(schemaVersionsJson ?? "{}");
+        var config = new SchemaConfig(schemaVersions ?? new Dictionary<string, string>());
+
+        // Get the document bundles from the manifest
+        var bundles = await CreateBundlesFromManifest(manifestPath);
+        
+        // Use MigrationPlanner to create the plan
+        var planner = new MigrationPlanner(_registry);
+        return await planner.PlanDowngradeFromConfigAsync(bundles, config);
+    }
+
+    // --- ENHANCED EXECUTION WITH TRANSACTION SUPPORT ---
+
+    public async Task<MigrationResult> ExecutePlanAgainstFileSystemAsync(MigrationPlan plan, string? transactionStoragePath = null)
+    {
+        if (string.IsNullOrEmpty(transactionStoragePath))
+        {
+            // Execute with simple, non-resumable transaction (existing behavior)
+            return await ExecuteSimpleTransactionAsync(plan);
+        }
+
+        // --- Resumable Transaction Logic ---
+
+        // Safety check: refuse to start if another transaction is pending
+        if (await FindIncompleteMigrationAsync(transactionStoragePath) != null)
+        {
+            throw new InvalidOperationException("An incomplete migration was found. Please run the resume operation.");
+        }
+
+        var transactionId = Guid.NewGuid().ToString();
+        var journalPath = Path.Combine(transactionStoragePath, $"journal-{transactionId}.json");
+        var backupPath = Path.Combine(transactionStoragePath, $"backup-{transactionId}");
+        Directory.CreateDirectory(transactionStoragePath);
+        Directory.CreateDirectory(backupPath);
+
+        // 1. Create and write the initial journal
+        var operations = plan.Actions
+            .Where(a => a.ActionType != ActionType.SKIP)
+            .Select(a => new JournalOperation(a.DocumentIdentifier, "Pending"))
+            .ToList();
+        var journal = new TransactionJournal(transactionId, "InProgress", operations);
+        await WriteJournalAsync(journalPath, journal);
+
+        try
+        {
+            // 2. Backup Phase
+            foreach (var op in operations)
+            {
+                if (File.Exists(op.FilePath))
+                {
+                    var backupFileName = Path.GetFileName(op.FilePath) + $".{transactionId}.backup";
+                    File.Copy(op.FilePath, Path.Combine(backupPath, backupFileName));
+                }
+            }
+
+            // 3. Execute the plan using the simple transaction method
+            var result = await ExecuteSimpleTransactionAsync(plan);
+
+            // 4. Finalize Transaction
+            await WriteJournalAsync(journalPath, journal with { Status = "Committed" });
+
+            // Cleanup on success
+            Directory.Delete(backupPath, recursive: true);
+            File.Delete(journalPath);
+
+            return result;
+        }
+        catch (Exception)
+        {
+            // On any failure, the journal is left "InProgress" for the resume operation to handle
+            throw;
+        }
+    }
+
+    public async Task<string?> FindIncompleteMigrationAsync(string transactionStoragePath)
+    {
+        if (!Directory.Exists(transactionStoragePath)) return null;
+
+        var journalFiles = Directory.EnumerateFiles(transactionStoragePath, "journal-*.json");
+        foreach (var journalFile in journalFiles)
+        {
+            try
+            {
+                var journalJson = await File.ReadAllTextAsync(journalFile);
+                var journal = JsonConvert.DeserializeObject<TransactionJournal>(journalJson);
+                if (journal?.Status == "InProgress")
+                {
+                    return journalFile;
+                }
+            }
+            catch
+            {
+                // Ignore corrupt journal files
+            }
+        }
+        return null;
+    }
+
+    public async Task<MigrationResult> ResumeIncompleteMigrationAsync(string transactionStoragePath)
+    {
+        var journalPath = await FindIncompleteMigrationAsync(transactionStoragePath);
+        if (journalPath == null)
+        {
+            throw new InvalidOperationException("No incomplete migration found to resume.");
+        }
+
+        var journalJson = await File.ReadAllTextAsync(journalPath);
+        var journal = JsonConvert.DeserializeObject<TransactionJournal>(journalJson);
+        if (journal == null)
+        {
+            throw new InvalidOperationException("Failed to parse transaction journal.");
+        }
+
+        var backupPath = Path.Combine(transactionStoragePath, $"backup-{journal.TransactionId}");
+        
+        try
+        {
+            // Restore from backups
+            if (Directory.Exists(backupPath))
+            {
+                foreach (var backupFile in Directory.EnumerateFiles(backupPath, "*.backup"))
+                {
+                    var originalFileName = Path.GetFileName(backupFile).Replace($".{journal.TransactionId}.backup", "");
+                    var originalPath = journal.Operations.FirstOrDefault(op => Path.GetFileName(op.FilePath) == originalFileName)?.FilePath;
+                    if (originalPath != null)
+                    {
+                        File.Copy(backupFile, originalPath, overwrite: true);
+                    }
+                }
+            }
+
+            // Mark as rolled back
+            await WriteJournalAsync(journalPath, journal with { Status = "RolledBack" });
+
+            // Cleanup
+            if (Directory.Exists(backupPath))
+            {
+                Directory.Delete(backupPath, recursive: true);
+            }
+            File.Delete(journalPath);
+
+            return new MigrationResult(
+                new ResultSummary("Rolled Back", TimeSpan.Zero, 0, 0, 0, 0),
+                new List<SuccessfulMigration>(),
+                new List<FailedMigration>());
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Failed to resume migration: {ex.Message}", ex);
+        }
+    }
+
+    // --- PRIVATE HELPER METHODS ---
+
+    private async Task<MigrationResult> ExecuteSimpleTransactionAsync(MigrationPlan plan)
+    {
+        var identifiers = plan.Actions.Select(a => a.DocumentIdentifier).Distinct();
+        var preExecutionFailures = new List<FailedMigration>();
+        
+        // This will now populate preExecutionFailures instead of throwing
+        var bundles = await CreateBundlesFromFilePaths(identifiers, preExecutionFailures);
+
+        var result = await _dataApi.ExecutePlanAsync(plan, bundles);
+
+        // Combine failures from loading with failures from execution
+        var allFailed = result.FailedDocuments.ToList();
+        allFailed.AddRange(preExecutionFailures);
+        
+        var updatedSummary = new ResultSummary(
+            result.Summary.Status,
+            result.Summary.Duration,
+            result.Summary.Processed,
+            result.Summary.Succeeded,
+            allFailed.Count,
+            result.Summary.Skipped);
+
+        var finalResult = new MigrationResult(updatedSummary, result.SuccessfulDocuments, allFailed);
+
+        await CommitResultsToDisk(finalResult);
+        return finalResult;
+    }
+
+    private async Task WriteJournalAsync(string path, TransactionJournal journal)
+    {
+        var json = JsonConvert.SerializeObject(journal, Formatting.Indented);
+        // Use atomic write for the journal itself
+        var tempPath = Path.GetTempFileName();
+        await File.WriteAllTextAsync(tempPath, json);
+        File.Move(tempPath, path, overwrite: true);
+    }
+
     private async Task CommitResultsToDisk(MigrationResult result)
     {
         foreach (var success in result.SuccessfulDocuments)

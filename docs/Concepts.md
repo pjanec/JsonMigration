@@ -56,8 +56,16 @@ The system discovers which files to manage based on a MigrationManifest.json fil
 
 * **Hybrid Model**: The final list of files is generated from a combination of the application's hardcoded internal rules and an optional, user-configurable external manifest.  
 * **Structure**: The manifest supports both explicitly listed paths (includePaths) and named, parameter-driven discovery rules (discoveryRules).  
-* **Verification**: All discovery rules must specify an expected docType. The engine will perform a "safe peek" on every found file to verify its \_meta.doc\_type before considering it a managed file.  
+* **Verification**: All discovery rules must specify an expected docType. The engine will perform a "safe peek" on every found file to verify its _meta.doc_type before considering it a managed file.  
 * **CLI Override**: The path to the manifest can be specified on the command line, overriding the default location for maximum operational flexibility.
+
+### **2.5. Schema Version Configuration**
+
+While the Migration Manifest defines *which* files to manage, a **Schema Version Configuration** file defines *what version* each file's schema should be.
+
+* **Purpose**: To enable deterministic deployments by locking the schema version for every DocType. This is critical for installers that need to prepare data for a specific application version.
+* **Generation**: The library can automatically generate a schema_versions.json file that captures the latest version of every registered DocType.
+* **Usage**: This file can then be used as the input for a multi-version migration, where the engine will perform the necessary upgrades or downgrades to ensure every document perfectly matches its specified version.
 
 ## **3\. System Architecture & Public API**
 
@@ -161,8 +169,18 @@ This workflow enables an installer for an older version of an application to saf
 
 The migrate-gc command safely removes obsolete snapshots.
 
-* **Rule**: A snapshot is considered obsolete and can be deleted if its version does not match the version of the current "live" document, *unless* the snapshot's version is higher than the live document's version.  
+* **Rule**: A snapshot is considered obsolete and can be deleted if its version does not match the version of the current "live" document, *unless* the snapshot's version is higher than the live document's version.
 * **Safety Net**: This rule carefully preserves the critical pre-rollback snapshot (e.g., a .v2.0.snapshot) when the live file has been successfully rolled back to v1.0.
+
+### **4.5. Resilient Transactional Workflow**
+
+To protect against data corruption from interruptions (e.g., power loss), batch file operations can be executed in a transactional context.
+
+1. **Journaling**: Before starting, the engine creates an on-disk **transaction journal**. This file logs every planned file operation.
+2. **Backup**: All original files are securely backed up before they are modified.
+3. **Execute & Update Journal**: As each file is successfully migrated, the journal is updated on disk to reflect its completion. The use of atomic file-move operations prevents individual files from being corrupted.
+4. **Commit**: Once all operations are complete, the transaction is committed, and the journal and backups are deleted.
+5. **Automatic Recovery**: If the process is interrupted, the journal is left on disk. Upon re-execution, the engine will detect the journal, automatically restore all files from the backup to their original state, and safely resume the migration from where it left off.
 
 ## **5\. Error Handling & Reporting**
 

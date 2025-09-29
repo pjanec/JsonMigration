@@ -52,6 +52,30 @@ public sealed record MigrationManifest(
 /// <param name="Parameters">A JObject containing the parameters to pass to the rule's Execute method.</param>
 public sealed record DiscoveryRuleDefinition(string RuleName, JObject Parameters);
 
+// --- Enhanced Schema Management Contracts ---
+
+/// <summary>
+/// Represents the schema_versions.json file that locks schema versions for all known document types.
+/// </summary>
+public sealed record SchemaConfig(IReadOnlyDictionary<string, string> SchemaVersions);
+
+/// <summary>
+/// Represents the on-disk transaction journal file for resilient migrations.
+/// </summary>
+public sealed record TransactionJournal(
+    string TransactionId,
+    string Status, // "InProgress", "Committed", "RolledBack"
+    IReadOnlyList<JournalOperation> Operations
+);
+
+/// <summary>
+/// Represents a single operation within a transaction journal.
+/// </summary>
+public sealed record JournalOperation(
+    string FilePath,
+    string Status // "Pending", "BackedUp", "Processing", "Completed"
+);
+
 // --- Planning & Execution Contracts ---
 
 public sealed record MigrationPlan(PlanHeader Header, IReadOnlyList<PlanAction> Actions);
