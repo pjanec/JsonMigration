@@ -90,8 +90,8 @@ public sealed record FailedMigration(string Identifier, JObject OriginalData, Me
 
 public sealed record DataMigrationResult
 {
-    public JObject Data { get; init; }
-    public MetaBlock NewMetadata { get; init; }
+    public required JObject Data { get; init; }
+    public required MetaBlock NewMetadata { get; init; }
     public IReadOnlyList<Snapshot> SnapshotsToPersist { get; init; } = [];
     public IReadOnlyList<MetaBlock> SnapshotsToDelete { get; init; } = [];
 }

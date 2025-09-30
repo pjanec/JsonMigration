@@ -137,7 +137,7 @@ internal class OperationalApi : IOperationalApi
 
     // --- NEW SCHEMA CONFIG MANAGEMENT METHODS ---
 
-    public async Task<Dictionary<string, string>> GetLatestSchemaVersionsAsync()
+    public Task<Dictionary<string, string>> GetLatestSchemaVersionsAsync()
     {
         var versions = new Dictionary<string, string>();
         foreach (var docType in _registry.GetRegisteredDocTypes())
@@ -148,7 +148,7 @@ internal class OperationalApi : IOperationalApi
                 versions[docType] = latestVersion;
             }
         }
-        return versions;
+        return Task.FromResult(versions);
     }
 
     public async Task WriteSchemaConfigAsync(string outputFilePath)
@@ -396,8 +396,8 @@ internal class OperationalApi : IOperationalApi
 
     private async Task<IEnumerable<DocumentBundle>> CreateBundlesFromManifest(string? manifestPath)
     {
-        // Use the override path when loading the manifest
-        var manifest = await _discovery.LoadManifestAsync(manifestPath);
+        // Use the override path when loading the manifest, provide empty string as fallback
+        var manifest = await _discovery.LoadManifestAsync(manifestPath ?? "");
         var filePaths = await _discovery.DiscoverManagedFilesAsync(manifest);
         var failures = new List<FailedMigration>(); // Ignored for planning phase
         return await CreateBundlesFromFilePaths(filePaths, failures);

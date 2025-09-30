@@ -60,7 +60,7 @@ internal class ApplicationApi : IApplicationApi
         else
         {
             // If a _meta block exists, parse it as usual.
-            meta = metaToken.ToObject<MetaBlock>()!;
+            meta = metaToken.ToObject<MetaBlock>() ?? throw new InvalidOperationException("Failed to parse metadata block");
         }
 
         var fromType = _registry.GetTypeForVersion(meta.DocType, meta.SchemaVersion);
@@ -94,7 +94,7 @@ internal class ApplicationApi : IApplicationApi
         var migrationPath = _registry.FindPath(fromType, typeof(T));
         var wasMigrated = migrationPath.Any();
         
-        object currentDto = jobject.ToObject(fromType)!;
+        var currentDto = jobject.ToObject(fromType) ?? throw new InvalidOperationException("Failed to deserialize document data");
 
         // Execute the migration chain
         foreach (var migrationStep in migrationPath)
@@ -103,7 +103,13 @@ internal class ApplicationApi : IApplicationApi
             var toDtoType = migrationStep.GetType().GetInterfaces().First().GetGenericArguments()[1];
             
             var method = migrationStep.GetType().GetMethod("ApplyAsync");
-            currentDto = await (dynamic)method!.Invoke(migrationStep, new[] { currentDto });
+            if (method == null)
+                throw new InvalidOperationException($"Migration step {migrationStep.GetType().Name} does not have ApplyAsync method");
+                
+            var dynamicResult = await (dynamic)method.Invoke(migrationStep, new[] { currentDto });
+            if (dynamicResult == null)
+                throw new InvalidOperationException("Migration step returned null");
+            currentDto = dynamicResult!; // null-forgiving operator since we just checked for null
         }
         
         if (wasMigrated && behavior == LoadBehavior.MigrateOnDisk)

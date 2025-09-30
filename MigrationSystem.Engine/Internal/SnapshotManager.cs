@@ -23,7 +23,11 @@ internal class SnapshotManager
         var hash = ComputeShortSha256(fileContent);
         var snapshotFileName = $"{Path.GetFileName(sourceFilePath)}.v{version}.{hash}.snapshot.json";
         var snapshotDirectory = Path.GetDirectoryName(sourceFilePath);
-        var snapshotPath = Path.Combine(snapshotDirectory, snapshotFileName);
+        
+        // Handle case where directory path could be null (root directory)
+        var snapshotPath = snapshotDirectory != null 
+            ? Path.Combine(snapshotDirectory, snapshotFileName)
+            : snapshotFileName;
 
         await WriteFileAtomicallyAsync(snapshotPath, fileContent);
     }

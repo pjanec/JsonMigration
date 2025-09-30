@@ -106,7 +106,7 @@ public class MigratePackageConfiguration : IJsonMigration<PackageConfiguration, 
 
             return finalPlugins;
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             // Return theirs as fallback if semantic handling fails
             return theirsToken?.DeepClone() ?? new JObject();

@@ -29,7 +29,7 @@ internal class QuarantineManager
     /// <param name="sourceFilePath">The path to the problematic file.</param>
     /// <param name="record">The diagnostic record explaining the failure.</param>
     /// <returns>The path to the generated quarantine report file.</returns>
-    public async Task<string> QuarantineFileAsync(string sourceFilePath, QuarantineRecord record)
+    public async Task<string?> QuarantineFileAsync(string sourceFilePath, QuarantineRecord record)
     {
         if (string.IsNullOrEmpty(_quarantineDirectory))
         {

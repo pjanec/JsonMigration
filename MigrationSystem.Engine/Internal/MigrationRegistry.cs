@@ -37,7 +37,7 @@ internal class MigrationRegistry
             var fromType = genericArgs[0];
             var toType = genericArgs[1];
 
-            var instance = Activator.CreateInstance(type); // Assumes parameterless constructor
+            var instance = Activator.CreateInstance(type) ?? throw new InvalidOperationException($"Failed to create instance of migration type {type.FullName}");
             _migrations[(fromType, toType)] = instance;
             
             allDtoTypes.Add(fromType);
@@ -82,7 +82,11 @@ internal class MigrationRegistry
             // Populate reverse map for quick lookups
             foreach (var kvp in versionMap)
             {
-                _reverseTypeMap[kvp.Value] = (docType, kvp.Key);
+                var attr = kvp.Value.GetCustomAttribute<SchemaVersionAttribute>();
+                if (attr != null)
+                {
+                    _reverseTypeMap[kvp.Value] = (attr.DocType, attr.Version);
+                }
             }
         }
     }

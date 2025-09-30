@@ -12,8 +12,8 @@ public class MigrationSystemBuilder
 {
     // Change this to a list of assemblies
     private readonly List<Assembly> _migrationsAssemblies = new();
-    private string _manifestPath;
-    private string _quarantineDir;
+    private string? _manifestPath;
+    private string? _quarantineDir;
 
     public MigrationSystemBuilder WithMigrationsFromAssembly(Assembly assembly)
     {
@@ -50,11 +50,11 @@ public class MigrationSystemBuilder
         var snapshotManager = serviceProvider.GetRequiredService<SnapshotManager>();
         var schemaRegistry = serviceProvider.GetRequiredService<SchemaRegistry>();
         
-        // Create the QuarantineManager with the configured path
-        var quarantineManager = new QuarantineManager(_quarantineDir);
+        // Create the QuarantineManager with the configured path, providing empty string as fallback
+        var quarantineManager = new QuarantineManager(_quarantineDir ?? "");
         
-        // Create the FileDiscoverer with the configured default manifest path
-        var fileDiscoverer = new FileDiscoverer(_manifestPath);
+        // Create the FileDiscoverer with the configured default manifest path, providing empty string as fallback
+        var fileDiscoverer = new FileDiscoverer(_manifestPath ?? "");
         
         // Compose the final facade implementation with its dependencies
         return new MigrationSystemFacade(registry, snapshotManager, schemaRegistry, quarantineManager, fileDiscoverer);

@@ -35,12 +35,18 @@ internal class DataApi : IDataApi
         // Validation logic (omitted for brevity, but would be similar to ApplicationApi)
 
         var migrationPath = _registry.FindPath(fromType, toType);
-        object currentDto = data.ToObject(fromType);
+        var currentDto = data.ToObject(fromType) ?? throw new InvalidOperationException("Failed to deserialize data to source type");
 
         foreach (var migrationStep in migrationPath)
         {
             var method = migrationStep.GetType().GetMethod("ApplyAsync");
-            currentDto = await (dynamic)method.Invoke(migrationStep, new[] { currentDto });
+            if (method == null)
+                throw new InvalidOperationException($"Migration step {migrationStep.GetType().Name} does not have ApplyAsync method");
+                
+            var dynamicResult = await (dynamic)method.Invoke(migrationStep, new[] { currentDto });
+            if (dynamicResult == null)
+                throw new InvalidOperationException("Migration step returned null");
+            currentDto = dynamicResult!; // null-forgiving operator since we just checked for null
         }
         return (T)currentDto;
     }
