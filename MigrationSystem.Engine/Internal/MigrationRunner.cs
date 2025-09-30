@@ -224,10 +224,12 @@ internal class MigrationRunner
             if (method == null)
                 throw new InvalidOperationException($"Migration step {migrationStep.GetType().Name} does not have ReverseAsync method");
                 
+#pragma warning disable CS8600 // Converting null literal or possible null value to non-nullable type
             var dynamicResult = await (dynamic)method.Invoke(migrationStep, new[] { currentDto });
+#pragma warning restore CS8600
             if (dynamicResult == null)
                 throw new InvalidOperationException("Migration step returned null");
-            currentDto = dynamicResult!; // null-forgiving operator since we just checked for null
+            currentDto = dynamicResult;
         }
 
         var finalJObject = JObject.FromObject(currentDto);
@@ -273,10 +275,12 @@ internal class MigrationRunner
             if (method == null)
                 throw new InvalidOperationException($"Migration step {migrationStep.GetType().Name} does not have ApplyAsync method");
                 
+#pragma warning disable CS8600 // Converting null literal or possible null value to non-nullable type
             var dynamicResult = await (dynamic)method.Invoke(migrationStep, new[] { currentDto });
+#pragma warning restore CS8600
             if (dynamicResult == null)
                 throw new InvalidOperationException("Migration step returned null");
-            currentDto = dynamicResult!; // null-forgiving operator since we just checked for null
+            currentDto = dynamicResult;
         }
         
         return JObject.FromObject(currentDto);
