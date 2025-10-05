@@ -55,6 +55,11 @@ public sealed record DiscoveryRuleDefinition(string RuleName, JObject Parameters
 // --- Enhanced Schema Management Contracts ---
 
 /// <summary>
+/// Represents the top-level structure of the schema config JSON file.
+/// </summary>
+public sealed record SchemaConfigFile(IReadOnlyDictionary<string, string> SchemaVersions);
+
+/// <summary>
 /// Represents the schema_versions.json file that locks schema versions for all known document types.
 /// </summary>
 public sealed record SchemaConfig(IReadOnlyDictionary<string, string> SchemaVersions);

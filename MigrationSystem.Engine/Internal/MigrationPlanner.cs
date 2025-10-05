@@ -118,7 +118,7 @@ internal class MigrationPlanner
     /// Creates a migration plan based on a schema config file that specifies target versions for each document type.
     /// Supports mixed upgrade/downgrade operations.
     /// </summary>
-    public Task<MigrationPlan> PlanDowngradeFromConfigAsync(IEnumerable<DocumentBundle> documentBundles, SchemaConfig config)
+    public Task<MigrationPlan> PlanFromConfigAsync(IEnumerable<DocumentBundle> documentBundles, SchemaConfig config)
     {
         var actions = new List<PlanAction>();
         foreach (var bundle in documentBundles)

@@ -1,4 +1,4 @@
-﻿# **Transparent Versioning & Migration System - Internal Design**
+# **Transparent Versioning & Migration System - Internal Design**
 
 ## **1. Architectural Overview**
 
@@ -163,7 +163,7 @@ The public-facing interfaces are thin facades that orchestrate the internal engi
   * `PlanUpgradeFromManifestAsync()`: Create a migration plan from discovered files.
   * `ExecutePlanAgainstFileSystemAsync()`: Execute a plan against the file system.
   * `WriteSchemaConfigAsync()`: Generate and write the schema version config file.
-  * `PlanDowngradeFromConfigAsync()`: Create a plan from a schema version config.
+  * `PlanFromConfigAsync()`: Create a plan from a schema version config.
   * `FindIncompleteMigrationAsync()`: Check for pending transactions.
   * `ResumeIncompleteMigrationAsync()`: Safely complete a pending transaction.
   * `RetryFailedFileSystemAsync()`: Retry failed operations.

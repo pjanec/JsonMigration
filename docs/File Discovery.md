@@ -1,4 +1,4 @@
-﻿# **File Discovery & The Migration Manifest Explained**
+# **File Discovery & The Migration Manifest Explained**
 
 ## **1. Why is Discovery Necessary?**
 
@@ -74,7 +74,7 @@ var managedFiles = await discoveryService.DiscoverManagedFilesAsync(manifest);
 await operationalApi.WriteSchemaConfigAsync("schema_versions.json");
 
 // 3. Plan multi-version migration using both
-var plan = await operationalApi.PlanDowngradeFromConfigAsync("schema_versions.json", "manifest.json");
+var plan = await operationalApi.PlanFromConfigAsync("schema_versions.json", "manifest.json");
 
 // 4. Execute with resilient transactions
 var result = await operationalApi.ExecutePlanAgainstFileSystemAsync(plan, "transactions/");

@@ -1,4 +1,4 @@
-﻿# **1\. Overview**
+# **1\. Overview**
 
 ## **1.1 Purpose & Core Philosophy**
 
@@ -227,7 +227,7 @@ public class ApplicationInstaller
             await _opsApi.WriteSchemaConfigAsync(schemaConfigPath);
             
             // b. Plan the migration to match the config file exactly.
-            var plan = await _opsApi.PlanDowngradeFromConfigAsync(schemaConfigPath);
+            var plan = await _opsApi.PlanFromConfigAsync(schemaConfigPath);
             
             // c. Execute the plan within the resilient transactional context.
             var result = await _opsApi.ExecutePlanAgainstFileSystemAsync(plan, transactionPath);

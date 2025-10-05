@@ -161,21 +161,35 @@ internal class OperationalApi : IOperationalApi
         await File.WriteAllTextAsync(outputFilePath, json);
     }
 
-    public async Task<MigrationPlan> PlanDowngradeFromConfigAsync(string configPath, string? manifestPath = null)
+    public async Task<MigrationPlan> PlanFromConfigAsync(string configPath, string? manifestPath = null)
     {
-        // Load the schema config
+        // Load and deserialize the schema config using the new DTO
         var configJson = await File.ReadAllTextAsync(configPath);
-        var configData = JsonConvert.DeserializeObject<Dictionary<string, object>>(configJson);
-        var schemaVersionsJson = configData?["SchemaVersions"]?.ToString();
-        var schemaVersions = JsonConvert.DeserializeObject<Dictionary<string, string>>(schemaVersionsJson ?? "{}");
-        var config = new SchemaConfig(schemaVersions ?? new Dictionary<string, string>());
+        var configFile = JsonConvert.DeserializeObject<SchemaConfigFile>(configJson);
+        var config = new SchemaConfig(configFile?.SchemaVersions ?? new Dictionary<string, string>());
 
         // Get the document bundles from the manifest
         var bundles = await CreateBundlesFromManifest(manifestPath);
         
         // Use MigrationPlanner to create the plan
         var planner = new MigrationPlanner(_registry);
-        return await planner.PlanDowngradeFromConfigAsync(bundles, config);
+        // ? Note the call to the renamed planner method
+        return await planner.PlanFromConfigAsync(bundles, config);
+    }
+
+    // ? NEW: The in-memory overload implementation
+    public async Task<MigrationPlan> PlanFromConfigAsync(SchemaConfig config, MigrationManifest manifest)
+    {
+        // 1. Discover files using the in-memory manifest DTO
+        var files = await _discovery.DiscoverManagedFilesAsync(manifest);
+        var failures = new List<FailedMigration>(); // Failures are ignored during planning
+        
+        // 2. Create document bundles from the discovered files
+        var bundles = await CreateBundlesFromFilePaths(files, failures);
+        
+        // 3. Use the planner with the in-memory bundles and schema config DTO
+        var planner = new MigrationPlanner(_registry);
+        return await planner.PlanFromConfigAsync(bundles, config);
     }
 
     // --- ENHANCED EXECUTION WITH TRANSACTION SUPPORT ---

@@ -76,8 +76,9 @@ public interface IOperationalApi
     Task<Dictionary<string, string>> GetLatestSchemaVersionsAsync();
     Task WriteSchemaConfigAsync(string outputFilePath);
 
-    // For multi-version migration
-    Task<MigrationPlan> PlanDowngradeFromConfigAsync(string configPath, string? manifestPath = null);
+    // ? RENAMED & OVERLOADED: For multi-version migration
+    Task<MigrationPlan> PlanFromConfigAsync(string configPath, string? manifestPath = null);
+    Task<MigrationPlan> PlanFromConfigAsync(SchemaConfig config, MigrationManifest manifest);
 
     // For resumable execution (enhanced signature)
     Task<MigrationResult> ExecutePlanAgainstFileSystemAsync(MigrationPlan plan, string? transactionStoragePath = null);
