@@ -75,6 +75,7 @@ public interface IOperationalApi
     // For 'produce-schema-config'
     Task<Dictionary<string, string>> GetLatestSchemaVersionsAsync();
     Task WriteSchemaConfigAsync(string outputFilePath);
+    Task<SchemaConfig> LoadSchemaConfigAsync(string configPath);
 
     // ? RENAMED & OVERLOADED: For multi-version migration
     Task<MigrationPlan> PlanFromConfigAsync(string configPath, string? manifestPath = null);

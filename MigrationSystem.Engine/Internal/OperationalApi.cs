@@ -161,15 +161,33 @@ internal class OperationalApi : IOperationalApi
         await File.WriteAllTextAsync(outputFilePath, json);
     }
 
+    public Task<SchemaConfig> LoadSchemaConfigAsync(string configPath)
+    {
+        if (!File.Exists(configPath))
+        {
+            // Return an empty config if the file doesn't exist
+            return Task.FromResult(new SchemaConfig(new Dictionary<string, string>()));
+        }
+
+        // Read the file content
+        var configJson = File.ReadAllText(configPath);
+
+        // Deserialize using the robust file DTO
+        var configFile = JsonConvert.DeserializeObject<SchemaConfigFile>(configJson);
+    
+        // Create and return the domain DTO
+        var config = new SchemaConfig(configFile?.SchemaVersions ?? new Dictionary<string, string>());
+    
+        return Task.FromResult(config);
+    }
+
     public async Task<MigrationPlan> PlanFromConfigAsync(string configPath, string? manifestPath = null)
     {
         // Load and deserialize the schema config using the new DTO
-        var configJson = await File.ReadAllTextAsync(configPath);
-        var configFile = JsonConvert.DeserializeObject<SchemaConfigFile>(configJson);
-        var config = new SchemaConfig(configFile?.SchemaVersions ?? new Dictionary<string, string>());
+        var config = await LoadSchemaConfigAsync(configPath);
 
-        // Get the document bundles from the manifest
-        var bundles = await CreateBundlesFromManifest(manifestPath);
+		// Get the document bundles from the manifest
+		var bundles = await CreateBundlesFromManifest(manifestPath);
         
         // Use MigrationPlanner to create the plan
         var planner = new MigrationPlanner(_registry);
