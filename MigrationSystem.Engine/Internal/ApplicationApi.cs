@@ -148,7 +148,13 @@ internal class ApplicationApi : IApplicationApi
         // 4. Serialize the document and add the meta block.
         var jobject = JObject.FromObject(document);
         jobject["_meta"] = JObject.FromObject(meta);
-        var json = jobject.ToString(Formatting.Indented);
+
+        var settings = new JsonSerializerSettings
+        {
+            Formatting = Formatting.Indented,
+            NullValueHandling = NullValueHandling.Ignore
+        };
+        var json = JsonConvert.SerializeObject(jobject, settings);
     
         // 5. Perform an atomic write to the file system.
         var tempFilePath = Path.GetTempFileName();

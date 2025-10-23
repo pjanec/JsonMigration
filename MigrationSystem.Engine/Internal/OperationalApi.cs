@@ -157,7 +157,14 @@ internal class OperationalApi : IOperationalApi
         var config = new SchemaConfig(versions);
         // Create a simple wrapper for JSON serialization
         var jsonObject = new { SchemaVersions = config.SchemaVersions };
-        var json = JsonConvert.SerializeObject(jsonObject, Formatting.Indented);
+
+        var settings = new JsonSerializerSettings
+        {
+            Formatting = Formatting.Indented,
+            NullValueHandling = NullValueHandling.Ignore
+        };
+        var json = JsonConvert.SerializeObject(jsonObject, settings);
+
         await File.WriteAllTextAsync(outputFilePath, json);
     }
 
@@ -186,8 +193,8 @@ internal class OperationalApi : IOperationalApi
         // Load and deserialize the schema config using the new DTO
         var config = await LoadSchemaConfigAsync(configPath);
 
-		// Get the document bundles from the manifest
-		var bundles = await CreateBundlesFromManifest(manifestPath);
+        // Get the document bundles from the manifest
+        var bundles = await CreateBundlesFromManifest(manifestPath);
         
         // Use MigrationPlanner to create the plan
         var planner = new MigrationPlanner(_registry);
@@ -383,7 +390,13 @@ internal class OperationalApi : IOperationalApi
 
     private async Task WriteJournalAsync(string path, TransactionJournal journal)
     {
-        var json = JsonConvert.SerializeObject(journal, Formatting.Indented);
+        var settings = new JsonSerializerSettings
+        {
+            Formatting = Formatting.Indented,
+            NullValueHandling = NullValueHandling.Ignore
+        };
+        var json = JsonConvert.SerializeObject(journal, settings);
+
         // Use atomic write for the journal itself
         var tempPath = Path.GetTempFileName();
         await File.WriteAllTextAsync(tempPath, json);
@@ -491,8 +504,14 @@ internal class OperationalApi : IOperationalApi
     {
         var fullObject = new JObject(data);
         fullObject["_meta"] = JObject.FromObject(metadata);
-        var content = fullObject.ToString(Formatting.Indented);
-        
+
+        var settings = new JsonSerializerSettings
+        {
+            Formatting = Formatting.Indented,
+            NullValueHandling = NullValueHandling.Ignore
+        };
+        var content = JsonConvert.SerializeObject(fullObject, settings);
+    
         var tempFilePath = Path.GetTempFileName();
         await File.WriteAllTextAsync(tempFilePath, content, Encoding.UTF8);
         File.Move(tempFilePath, path, overwrite: true);

@@ -75,6 +75,8 @@ public interface IOperationalApi
     // For 'produce-schema-config'
     Task<Dictionary<string, string>> GetLatestSchemaVersionsAsync();
     Task WriteSchemaConfigAsync(string outputFilePath);
+
+    // Loads a schema config file and returns the DTO
     Task<SchemaConfig> LoadSchemaConfigAsync(string configPath);
 
     // ? RENAMED & OVERLOADED: For multi-version migration

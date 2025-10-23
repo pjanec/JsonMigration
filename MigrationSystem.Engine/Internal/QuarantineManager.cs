@@ -53,7 +53,13 @@ internal class QuarantineManager
         File.Move(sourceFilePath, quarantinedDataPath, overwrite: true);
 
         // 2. Write the detailed diagnostic report
-        var reportJson = JsonConvert.SerializeObject(record, Formatting.Indented);
+        var settings = new JsonSerializerSettings
+        {
+            Formatting = Formatting.Indented,
+            NullValueHandling = NullValueHandling.Ignore
+        };
+        var reportJson = JsonConvert.SerializeObject(record, settings);
+
         await File.WriteAllTextAsync(quarantineReportPath, reportJson, Encoding.UTF8);
 
         return quarantineReportPath;
